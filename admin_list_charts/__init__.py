@@ -5,7 +5,7 @@ Super simple bar charts for django admin list views visualizing
 the number of objects based on date_hierarchy using Chart.js.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "foorilla LLC"
 __credits__ = "Pat Foo"
 __contact__ = "pat@foorilla.com"
