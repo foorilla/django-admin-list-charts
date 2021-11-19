@@ -1,0 +1,2 @@
+recursive-include admin_list_charts/static/ *.css *.js
+recursive-include admin_list_charts/templates/ *.html
