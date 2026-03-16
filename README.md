@@ -12,7 +12,12 @@ This way you can super-charge your django admin with date-based bar charts in le
 
 ## Requirements
 
-* `Django>=3.0`
+* `Python>=3.12,<3.15`
+* `Django>=5,<7`
+
+## Compatibility update
+
+This release updates package metadata for modern supported runtimes and is intended for Django 5.x-6.x projects running on Python 3.12-3.14.
 
 ## Installation
 
