@@ -41,6 +41,64 @@ This release updates package metadata for modern supported runtimes and is inten
 
 4. Done!
 
+## Facets-enabled chart mode
+
+When Django admin `Show counts` (`_facets`) is enabled in the changelist filters, the chart view switches to a denser mode:
+
+- main mixed chart: volume bars + boolean rate overlays
+- compact right context rail: selected facet composition and quick stats
+
+This mode is designed to work with little or no extra config.
+
+### Zero-config (recommended)
+
+If your model has:
+
+- one date field used by `date_hierarchy`
+- a few `choices` fields
+- a few boolean fields
+
+the mixin auto-selects the most informative fields for overlays when facets are on.
+
+### Optional tuning
+
+You can still explicitly tune what appears:
+
+```python
+from django.contrib import admin
+from admin_list_charts.admin import ListChartMixin
+
+
+@admin.register(MyModel)
+class MyModelAdmin(ListChartMixin, admin.ModelAdmin):
+    date_hierarchy = 'created_at'
+    list_filter = ('status', 'category', 'is_active', 'is_flagged')
+
+    # Optional explicit field picks (override auto-selection)
+    chart_facet_fields = ('status', 'category')
+    chart_rate_fields = ('is_active', 'is_flagged')
+
+    # Optional caps (used by auto-selection too)
+    chart_facet_max_series = 6
+    chart_auto_max_facet_fields = 2
+    chart_auto_max_rate_fields = 3
+```
+
+### Configuration reference
+
+- `chart_facet_fields`: tuple of categorical/choices fields to visualize in context charts
+- `chart_rate_fields`: tuple of boolean fields to overlay as percentage trend lines
+- `chart_facet_max_series`: max values per categorical field shown in charts (top-N)
+- `chart_auto_select`: `True` by default; enables automatic field selection when explicit tuples are empty
+- `chart_auto_max_facet_fields`: max auto-selected categorical fields (default: `2`)
+- `chart_auto_max_rate_fields`: max auto-selected boolean fields (default: `3`)
+
+### Practical notes
+
+- Keep `list_filter` meaningful; facet mode follows the currently filtered changelist queryset.
+- If your model has many candidate fields, start with auto mode, then pin explicit fields for stable output.
+- For best readability, keep boolean overlay fields to 2-3 and categorical fields to 1-2.
+
 ## Local reference project
 
 This repository includes a tiny Django project at `example_project/` for manual testing while developing this package.
@@ -68,6 +126,8 @@ The demo app used by this project lives in `example_project/demo/` and exists fo
    `python example_project/manage.py runserver`
 
 Then browse to `http://127.0.0.1:8000/admin/` and open `Visits` to verify list charts and filter combinations.
+
+When `Show counts` (`_facets`) is enabled in the changelist sidebar, additional high-density charts are rendered. By default, the mixin auto-selects the most informative choice and boolean fields, so this works with little or no per-admin configuration in most cases.
 
 ## Acknowledgements
 
