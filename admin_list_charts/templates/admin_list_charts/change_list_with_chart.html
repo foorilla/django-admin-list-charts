@@ -1,79 +1,303 @@
 {% extends "admin/change_list.html" %}
 {% load static %}
 
-{% if chart_data and chart_period %}
+{% if chart_payload and chart_period %}
 {% block extrahead %}
 {{ block.super }}
 
 <script src="{% static 'admin_list_charts/js/chart.bundle.min.js' %}"></script>
+<style>
+#listChartLayout {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    margin: 0 0 .15em;
+}
+
+#listChartMain {
+    flex: 1;
+    min-width: 0;
+}
+
+#listChartContext {
+    width: 260px;
+    display: none;
+}
+
+@media (max-width: 900px) {
+    #listChartLayout {
+        display: block;
+    }
+
+    #listChartMain {
+        width: 100%;
+    }
+
+    #listChartContext {
+        width: 100%;
+        margin-top: .75em;
+    }
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    var rawData = {{ chart_data|safe }};
-    var period = '{{ chart_period }}';
+    var payload = {{ chart_payload|safe }};
+    var period = payload.period;
+    var listChartCanvas = document.getElementById('listChart');
 
-    var data = rawData
-        .map((d) => ({ x: new Date(d.x), y: d.y }))
-        .filter((d) => !Number.isNaN(d.x.getTime()))
-        .sort((a, b) => a.x - b.x);
+    listChartCanvas.style.height = payload.facets_on ? '400px' : '180px';
 
-    var formatters = {
-        hour: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric' }),
-        day: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
-        week: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
-        month: new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' })
-    };
-    var formatter = formatters[period] || formatters.month;
+    function getAdminVar(name, fallback) {
+        var value = getComputedStyle(document.documentElement).getPropertyValue(name);
+        value = value ? value.trim() : '';
+        return value || fallback;
+    }
 
-    var labels = data.map((d) => formatter.format(d.x));
-    var values = data.map((d) => d.y);
+    function toRgba(color, alpha) {
+        if (!color) {
+            return 'rgba(0, 0, 0, ' + alpha + ')';
+        }
+        if (color.indexOf('rgba(') === 0) {
+            return color.replace(/rgba\(([^)]+),\s*[^)]+\)/, 'rgba($1, ' + alpha + ')');
+        }
+        if (color.indexOf('rgb(') === 0) {
+            return color.replace('rgb(', 'rgba(').replace(')', ', ' + alpha + ')');
+        }
+        if (color[0] === '#') {
+            var hex = color.slice(1);
+            if (hex.length === 3) {
+                hex = hex.split('').map((c) => c + c).join('');
+            }
+            if (hex.length === 6) {
+                var r = parseInt(hex.slice(0, 2), 16);
+                var g = parseInt(hex.slice(2, 4), 16);
+                var b = parseInt(hex.slice(4, 6), 16);
+                return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+            }
+        }
+        return color;
+    }
 
-    var ctx = document.getElementById('listChart').getContext('2d');
-    var chart = new Chart(ctx, {
-	type: 'bar',
-	data: {
-	    labels: labels,
-	    datasets: [{
-		data: values,
-		backgroundColor: '#f59e0b',
-		borderColor: '#b45309',
-		borderWidth: 1
-	    }]
-	},
-	options: {
-	    responsive: true,
-	    plugins: {
-		legend: {
-		    display: false
-		},
-		tooltip: {
-		    callbacks: {
-			label: (context) => 'Count: ' + context.formattedValue
-		    }
-		}
-	    },
-	    scales: {
-		x: {
-		    ticks: {
-			maxRotation: 45,
-			minRotation: 0
-		    }
-		},
-		y: {
-		    beginAtZero: true,
-		    ticks: {
-			precision: 0
-		    }
-		}
-	    }
-	}
+    var accent = getAdminVar('--primary', getAdminVar('--link-fg', '#2563eb'));
+    var secondary = getAdminVar('--secondary', '#16a34a');
+    var linkColor = getAdminVar('--link-fg', '#0ea5e9');
+    var danger = getAdminVar('--delete-button-bg', '#c0392b');
+    var warning = getAdminVar('--message-warning-bg', '#ea580c');
+    var neutral = getAdminVar('--body-quiet-color', '#6b7280');
+    var colors = [accent, secondary, linkColor, danger, warning, neutral];
+
+    function getFormatter(unit) {
+        var formatters = {
+            hour: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric' }),
+            day: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
+            week: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
+            month: new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' })
+        };
+        return formatters[unit] || formatters.month;
+    }
+
+    function normalizeSeries(points) {
+        return (points || [])
+            .map((point) => ({ x: new Date(point.x), y: point.y }))
+            .filter((point) => !Number.isNaN(point.x.getTime()))
+            .sort((a, b) => a.x - b.x);
+    }
+
+    function sumSeries(points) {
+        return normalizeSeries(points).reduce((sum, point) => sum + point.y, 0);
+    }
+
+    var formatter = getFormatter(period);
+    var volumePoints = normalizeSeries(payload.volume || []);
+    var volumeLabels = volumePoints.map((point) => formatter.format(point.x));
+    var volumeValues = volumePoints.map((point) => point.y);
+    var volumeCtx = listChartCanvas.getContext('2d');
+    var datasets = [{
+        type: 'bar',
+        label: 'Visits',
+        data: volumeValues,
+        backgroundColor: toRgba(accent, payload.facets_on ? 0.22 : 0.16),
+        borderColor: accent,
+        borderWidth: 1,
+        yAxisID: 'yCount'
+    }];
+
+    var rateSeries = (payload.rates || []).slice(0, 3);
+    rateSeries.forEach((series, idx) => {
+        var values = {};
+        normalizeSeries(series.data).forEach((point) => {
+            values[point.x.toISOString()] = point.y * 100;
+        });
+        datasets.push({
+            type: 'line',
+            label: series.label,
+            data: volumePoints.map((point) => values[point.x.toISOString()] || 0),
+            borderColor: colors[idx % colors.length],
+            backgroundColor: colors[idx % colors.length],
+            borderWidth: 2,
+            pointRadius: 1,
+            pointHoverRadius: 3,
+            tension: 0.25,
+            yAxisID: 'yRate'
+        });
     });
+
+    new Chart(volumeCtx, {
+        data: {
+            labels: volumeLabels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: {
+                    display: payload.facets_on,
+                    position: 'bottom'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: (context) => {
+                            if (context.dataset.yAxisID === 'yRate') {
+                                return context.dataset.label + ': ' + context.formattedValue + '%';
+                            }
+                            return context.dataset.label + ': ' + context.formattedValue;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        display: payload.facets_on
+                    },
+                    grid: {
+                        display: payload.facets_on
+                    }
+                },
+                yCount: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                },
+                yRate: {
+                    type: 'linear',
+                    position: 'right',
+                    beginAtZero: true,
+                    suggestedMax: 100,
+                    grid: { drawOnChartArea: false },
+                    ticks: { callback: (value) => value + '%' }
+                }
+            }
+        }
+    });
+
+    if (!payload.facets_on || !(payload.facets || []).length) {
+        return;
+    }
+
+    var contextPanel = document.getElementById('listChartContext');
+    contextPanel.style.display = 'block';
+
+    var facetTotals = (payload.facets || []).map((facet) => {
+        var totals = facet.series.map((series) => ({
+            label: series.label,
+            value: sumSeries(series.data)
+        }));
+        totals.sort((a, b) => b.value - a.value);
+        return {
+            field: facet.field,
+            label: facet.label,
+            totals: totals
+        };
+    });
+
+    var topBlock = document.getElementById('chartContextStats');
+    var latestRates = rateSeries.map((series) => {
+        var points = normalizeSeries(series.data);
+        var lastPoint = points.length ? points[points.length - 1].y * 100 : 0;
+        return series.label + ': ' + lastPoint.toFixed(1) + '%';
+    });
+
+    topBlock.innerHTML = ''
+        + '<div style="margin:0;font-size:1.2em;font-weight:600;line-height:1.1;">' + (payload.total_count || 0) + '</div>'
+        + '<div style="font-size:.82em;opacity:.8;margin-bottom:.6em;">filtered records</div>'
+        + (latestRates.length ? '<div style="font-size:.8em;margin-top:.6em;line-height:1.4;">' + latestRates.join('<br>') + '</div>' : '');
+
+    var channelFacet = facetTotals.find((facet) => facet.field === 'channel') || facetTotals[0];
+    var deviceFacet = facetTotals.find((facet) => facet.field === 'device_type') || facetTotals[1];
+
+    if (channelFacet && channelFacet.totals.length) {
+        new Chart(document.getElementById('chartContextFacetA').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: channelFacet.totals.map((item) => item.label),
+                datasets: [{
+                    data: channelFacet.totals.map((item) => item.value),
+                    backgroundColor: channelFacet.totals.map((_, idx) => colors[idx % colors.length]),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    title: { display: true, text: channelFacet.label },
+                    legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } }
+                }
+            }
+        });
+    }
+
+    if (deviceFacet && deviceFacet.totals.length) {
+        var topDevices = deviceFacet.totals.slice(0, 5);
+        new Chart(document.getElementById('chartContextFacetB').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: topDevices.map((item) => item.label),
+                datasets: [{
+                    data: topDevices.map((item) => item.value),
+                    backgroundColor: toRgba(accent, 0.2),
+                    borderColor: accent,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                indexAxis: 'y',
+                plugins: {
+                    title: { display: true, text: deviceFacet.label },
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+    }
 });
 </script>
 
-<canvas id="listChart" style="margin-bottom:4em; width:100%; height:50%;"></canvas>
+<div id="listChartLayout">
+    <div id="listChartMain">
+        <canvas id="listChart" style="width:100%; height:180px;"></canvas>
+    </div>
+    <aside id="listChartContext">
+        <div id="chartContextStats" style="padding:0 .2em .3em; margin:0 0 .35em;"></div>
+        <div style="height:140px; margin-bottom:.55em;"><canvas id="chartContextFacetA" style="width:100%; height:100%;"></canvas></div>
+        <div style="height:133px;"><canvas id="chartContextFacetB" style="width:100%; height:100%;"></canvas></div>
+    </aside>
+</div>
 
 {{ block.super }}
 {% endblock %}
