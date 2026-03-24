@@ -41,6 +41,34 @@ This release updates package metadata for modern supported runtimes and is inten
 
 4. Done!
 
+## Local reference project
+
+This repository includes a tiny Django project at `example_project/` for manual testing while developing this package.
+
+The demo app used by this project lives in `example_project/demo/` and exists for local testing purposes. It is not part of the reusable `admin_list_charts` package API.
+
+1. Install this package in editable mode:
+
+   `python -m pip install -e .`
+
+2. Run migrations in the example project:
+
+   `python example_project/manage.py migrate`
+
+3. Create an admin user:
+
+   `python example_project/manage.py createsuperuser`
+
+4. Seed chartable demo data (high-volume, multi-facet):
+
+   `python example_project/manage.py seed_visits --truncate --days 180 --min-per-day 120 --max-per-day 450`
+
+5. Start the server and open admin:
+
+   `python example_project/manage.py runserver`
+
+Then browse to `http://127.0.0.1:8000/admin/` and open `Visits` to verify list charts and filter combinations.
+
 ## Acknowledgements
 
 This rather pragmatic solution was heavily inspired by the work of Dani Hodovic (see [https://findwork.dev/blog/adding-charts-to-django-admin/](https://findwork.dev/blog/adding-charts-to-django-admin/)).

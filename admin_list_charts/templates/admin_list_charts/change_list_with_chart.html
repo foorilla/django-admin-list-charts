@@ -5,43 +5,68 @@
 {% block extrahead %}
 {{ block.super }}
 
-<link rel="stylesheet" href="{% static 'admin_list_charts/css/chart.min.css' %}" />
 <script src="{% static 'admin_list_charts/js/chart.bundle.min.js' %}"></script>
 {% endblock %}
 
 {% block content %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    var data = {{ chart_data|safe }};
-    data.forEach((d) => { d.x = new Date(d.x); });
-    
+    var rawData = {{ chart_data|safe }};
+    var period = '{{ chart_period }}';
+
+    var data = rawData
+        .map((d) => ({ x: new Date(d.x), y: d.y }))
+        .filter((d) => !Number.isNaN(d.x.getTime()))
+        .sort((a, b) => a.x - b.x);
+
+    var formatters = {
+        hour: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric' }),
+        day: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
+        week: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }),
+        month: new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' })
+    };
+    var formatter = formatters[period] || formatters.month;
+
+    var labels = data.map((d) => formatter.format(d.x));
+    var values = data.map((d) => d.y);
+
     var ctx = document.getElementById('listChart').getContext('2d');
     var chart = new Chart(ctx, {
 	type: 'bar',
 	data: {
+	    labels: labels,
 	    datasets: [{
-		data: data,
-		backgroundColor: 'Orange',
+		data: values,
+		backgroundColor: '#f59e0b',
+		borderColor: '#b45309',
+		borderWidth: 1
 	    }]
 	},
 	options: {
 	    responsive: true,
-	    legend: {
-		display: false,
+	    plugins: {
+		legend: {
+		    display: false
+		},
+		tooltip: {
+		    callbacks: {
+			label: (context) => 'Count: ' + context.formattedValue
+		    }
+		}
 	    },
 	    scales: {
-		xAxes: [{
-		    type: 'time',
-		    time: {
-			unit: '{{ chart_period }}',
-			round: '{{ chart_period }}',
+		x: {
+		    ticks: {
+			maxRotation: 45,
+			minRotation: 0
 		    }
-		}],
-		yAxes: [{
-                    ticks: {
-			beginAtZero: true,
-                    }
-		}]
+		},
+		y: {
+		    beginAtZero: true,
+		    ticks: {
+			precision: 0
+		    }
+		}
 	    }
 	}
     });

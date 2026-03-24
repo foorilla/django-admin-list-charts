@@ -61,6 +61,12 @@ Django project-level testing (when using a host project):
 - Run one test case: `python manage.py test tests.test_admin.ListChartMixinTests`
 - Run one test method: `python manage.py test tests.test_admin.ListChartMixinTests.test_get_chart_period`
 
+Reference project-level checks in this repo:
+
+- Apply migrations: `python example_project/manage.py migrate`
+- Seed demo rows: `python example_project/manage.py seed_visits --truncate --days 180 --min-per-day 120 --max-per-day 450`
+- Run dev server: `python example_project/manage.py runserver`
+
 ## Lint / Format Commands
 
 No lint or formatter is configured in-repo.
@@ -128,7 +134,7 @@ Do not add tool configs unless explicitly asked.
 - Use `{% load static %}` and static paths under app namespace.
 - Avoid heavy inline JS changes unless necessary for behavior.
 - Preserve compatibility with Django admin DOM conventions.
-- Treat `chart.bundle.min.js` and `chart.min.css` as vendored files.
+- Treat `chart.bundle.min.js` as a vendored file.
 
 ### Packaging
 
@@ -158,6 +164,6 @@ If these files are added later, treat them as high-priority instructions and upd
 - App config: `admin_list_charts/apps.py`
 - Package metadata: `admin_list_charts/__init__.py`
 - Admin template: `admin_list_charts/templates/admin_list_charts/change_list_with_chart.html`
-- Static CSS: `admin_list_charts/static/admin_list_charts/css/chart.min.css`
 - Static JS: `admin_list_charts/static/admin_list_charts/js/chart.bundle.min.js`
 - Packaging: `setup.py`, `MANIFEST.in`
+- Local reference project: `example_project/`
