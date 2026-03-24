@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
@@ -40,6 +41,32 @@ class ListChartMixin(object):
 
     def get_chart_auto_max_rate_fields(self, request):
         return max(0, int(getattr(self, 'chart_auto_max_rate_fields', 3)))
+
+    def get_chart_palette(self, request):
+        config = getattr(settings, 'ADMIN_LIST_CHARTS', {})
+        if not isinstance(config, dict):
+            return {}
+
+        palette = config.get('palette', {})
+        if not isinstance(palette, dict):
+            return {}
+
+        normalized = {}
+        accent = palette.get('accent')
+        if isinstance(accent, str) and accent.strip():
+            normalized['accent'] = accent.strip()
+
+        series = palette.get('series')
+        if isinstance(series, (list, tuple)):
+            clean_series = [
+                color.strip()
+                for color in series
+                if isinstance(color, str) and color.strip()
+            ]
+            if clean_series:
+                normalized['series'] = clean_series
+
+        return normalized
 
     def _get_auto_choice_facet_candidates(self):
         candidates = []
@@ -313,6 +340,8 @@ class ListChartMixin(object):
                 total_rows=total_count,
             )
             payload['total_count'] = total_count
+            payload['object_label'] = str(getattr(cl.opts, 'verbose_name_plural', 'records'))
+            payload['palette'] = self.get_chart_palette(request)
 
             response.context_data['chart_payload'] = json.dumps(payload, cls=DjangoJSONEncoder)
             response.context_data['chart_data'] = json.dumps(payload['volume'], cls=DjangoJSONEncoder)

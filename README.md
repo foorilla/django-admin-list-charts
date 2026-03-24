@@ -93,6 +93,31 @@ class MyModelAdmin(ListChartMixin, admin.ModelAdmin):
 - `chart_auto_max_facet_fields`: max auto-selected categorical fields (default: `2`)
 - `chart_auto_max_rate_fields`: max auto-selected boolean fields (default: `3`)
 
+### Global chart palette (settings.py)
+
+You can define a global chart palette in Django settings to blend with your admin theme:
+
+```python
+ADMIN_LIST_CHARTS = {
+    "palette": {
+        "accent": "#1f5fa6",
+        "series": [
+            "#1f5fa6",
+            "#2f9e44",
+            "#d6336c",
+            "#0c8599",
+            "#9c36b5",
+            "#e67700",
+        ],
+    }
+}
+```
+
+- `palette.accent`: main bar color and primary chart accent
+- `palette.series`: line/context series colors, in order
+
+If omitted, colors are derived from Django admin CSS variables.
+
 ### Practical notes
 
 - Keep `list_filter` meaningful; facet mode follows the currently filtered changelist queryset.

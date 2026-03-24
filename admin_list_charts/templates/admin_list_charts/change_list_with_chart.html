@@ -46,6 +46,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     var payload = {{ chart_payload|safe }};
     var period = payload.period;
+    var objectLabel = payload.object_label || 'Records';
+    var palette = payload.palette || {};
     var listChartCanvas = document.getElementById('listChart');
 
     listChartCanvas.style.height = payload.facets_on ? '400px' : '180px';
@@ -81,13 +83,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return color;
     }
 
-    var accent = getAdminVar('--primary', getAdminVar('--link-fg', '#2563eb'));
+    var accent = palette.accent || getAdminVar('--primary', getAdminVar('--link-fg', '#2563eb'));
     var secondary = getAdminVar('--secondary', '#16a34a');
     var linkColor = getAdminVar('--link-fg', '#0ea5e9');
     var danger = getAdminVar('--delete-button-bg', '#c0392b');
     var warning = getAdminVar('--message-warning-bg', '#ea580c');
     var neutral = getAdminVar('--body-quiet-color', '#6b7280');
-    var colors = [accent, secondary, linkColor, danger, warning, neutral];
+    var defaultSeries = [accent, secondary, linkColor, danger, warning, neutral];
+    var colors = Array.isArray(palette.series) && palette.series.length ? palette.series : defaultSeries;
 
     function getFormatter(unit) {
         var formatters = {
@@ -117,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var volumeCtx = listChartCanvas.getContext('2d');
     var datasets = [{
         type: 'bar',
-        label: 'Visits',
+        label: objectLabel,
         data: volumeValues,
         backgroundColor: toRgba(accent, payload.facets_on ? 0.22 : 0.16),
         borderColor: accent,
@@ -228,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     topBlock.innerHTML = ''
         + '<div style="margin:0;font-size:1.2em;font-weight:600;line-height:1.1;">' + (payload.total_count || 0) + '</div>'
-        + '<div style="font-size:.82em;opacity:.8;margin-bottom:.6em;">filtered records</div>'
+        + '<div style="font-size:.82em;opacity:.8;margin-bottom:.6em;">filtered ' + objectLabel + '</div>'
         + (latestRates.length ? '<div style="font-size:.8em;margin-top:.6em;line-height:1.4;">' + latestRates.join('<br>') + '</div>' : '');
 
     var channelFacet = facetTotals.find((facet) => facet.field === 'channel') || facetTotals[0];
