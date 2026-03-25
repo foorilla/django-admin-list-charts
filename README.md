@@ -1,159 +1,149 @@
 # django-admin-list-charts
-Super simple bar charts for django admin list views visualizing the number of objects based on date_hierarchy using Chart.js.
 
-This package serves as a ready-made drop-in solution with Chart.js included.
-This way you can super-charge your django admin with date-based bar charts in less than a minute :)
+Super simple charts for Django admin changelist pages, driven by `date_hierarchy` and bundled with Chart.js.
 
-## Examples
-
-![Example 1: Django admin list charts on with bright theme](https://github.com/foorilla/django-admin-list-charts/raw/main/django-admin-list-charts_example_1_bright_screen.png)
-
-![Example 1: Django admin list charts on with dark theme](https://github.com/foorilla/django-admin-list-charts/raw/main/django-admin-list-charts_example_2_dark_screen.png)
+It is built to be a drop-in enhancement: install, mix in `ListChartMixin`, and your admin list gets a compact timeline chart. When Django's facet counts are enabled, it also renders a dense sidebar of categorical distributions.
 
 ## Requirements
 
-* `Python>=3.12,<3.15`
-* `Django>=5,<7`
-
-## Compatibility update
-
-This release updates package metadata for modern supported runtimes and is intended for Django 5.x-6.x projects running on Python 3.12-3.14.
+- `Python>=3.12,<3.15`
+- `Django>=5,<7`
 
 ## Installation
 
-1. Install Django admin list charts from PyPI by using `pip`:
-
-	`pip install django-admin-list-charts`
-
-2. Add `'admin_list_charts'` entry to Django `INSTALLED_APPS` setting.
-
-3. Sprinkle some `ListChartMixin` over every admin class where you want to display charts in the admin list view. For example:
-
-```	
-    ...
-    from admin_list_charts.admin import ListChartMixin
-    
-    @admin.register(Foo)
-    class FooAdmin(ListChartMixin, admin.ModelAdmin):
-	    date_hierarchy = 'created'
-	    ...
+```bash
+pip install django-admin-list-charts
 ```
 
-4. Done!
+Add the app:
 
-## Facets-enabled chart mode
+```python
+INSTALLED_APPS = [
+    # ...
+    'admin_list_charts',
+]
+```
 
-When Django admin `Show counts` (`_facets`) is enabled in the changelist filters, the chart view switches to a denser mode:
-
-- main mixed chart: volume bars + boolean rate overlays
-- compact right context rail: selected facet composition and quick stats
-
-This mode is designed to work with little or no extra config.
-
-### Zero-config (recommended)
-
-If your model has:
-
-- one date field used by `date_hierarchy`
-- a few `choices` fields
-- a few boolean fields
-
-the mixin auto-selects the most informative fields for overlays when facets are on.
-
-### Optional tuning
-
-You can still explicitly tune what appears:
+## Quick Start (60 seconds)
 
 ```python
 from django.contrib import admin
 from admin_list_charts.admin import ListChartMixin
 
+from .models import Order
 
-@admin.register(MyModel)
-class MyModelAdmin(ListChartMixin, admin.ModelAdmin):
+
+@admin.register(Order)
+class OrderAdmin(ListChartMixin, admin.ModelAdmin):
     date_hierarchy = 'created_at'
-    list_filter = ('status', 'category', 'is_active', 'is_flagged')
+    list_filter = ('status', 'source', 'is_paid', 'is_returning')
+```
 
-    # Optional explicit field picks (override auto-selection)
-    chart_facet_fields = ('status', 'category')
-    chart_rate_fields = ('is_active', 'is_flagged')
+That is enough to get:
 
-    # Optional caps (used by auto-selection too)
+- a main timeline chart on changelist pages
+- automatic facet sidebar charts when Django facet counts are enabled (`_facets`)
+
+## How Facet Mode Works
+
+When Django admin "Show counts" / facets are active:
+
+- Main chart stays focused on timeline volume, with optional boolean rate overlays.
+- Right sidebar is filled with compact absolute distributions for facet fields.
+- Sidebar uses compact horizontal bar charts (no pie/donut) for better readability in limited space.
+- Auto-selection is intentionally permissive so available `list_filter` choices are shown whenever there is data.
+
+## Optional Tuning
+
+You can explicitly control what gets charted.
+
+```python
+@admin.register(Order)
+class OrderAdmin(ListChartMixin, admin.ModelAdmin):
+    date_hierarchy = 'created_at'
+    list_filter = ('status', 'source', 'channel', 'is_paid', 'is_returning')
+
+    # Optional explicit picks (if omitted, auto-selection is used)
+    chart_facet_fields = ('status', 'source', 'channel')
+    chart_rate_fields = ('is_paid', 'is_returning')
+
+    # Optional limits
     chart_facet_max_series = 6
-    chart_auto_max_facet_fields = 2
+    chart_auto_max_facet_fields = 4
     chart_auto_max_rate_fields = 3
 ```
 
-### Configuration reference
+### Config Reference
 
-- `chart_facet_fields`: tuple of categorical/choices fields to visualize in context charts
-- `chart_rate_fields`: tuple of boolean fields to overlay as percentage trend lines
-- `chart_facet_max_series`: max values per categorical field shown in charts (top-N)
-- `chart_auto_select`: `True` by default; enables automatic field selection when explicit tuples are empty
-- `chart_auto_max_facet_fields`: max auto-selected categorical fields (default: `2`)
-- `chart_auto_max_rate_fields`: max auto-selected boolean fields (default: `3`)
+- `chart_facet_fields`: categorical/choice-like fields for facet charts
+- `chart_rate_fields`: boolean fields to render as percentage overlays in main chart
+- `chart_top_fields`: optional top-N charts (`[(field_name, limit), ...]`)
+- `chart_facet_max_series`: max series per facet field (top-N values)
+- `chart_auto_select`: default `True`; enables auto-field detection when explicit tuples are empty
+- `chart_auto_max_facet_fields`: default `4`
+- `chart_auto_max_rate_fields`: default `3`
 
-### Global chart palette (settings.py)
-
-You can define a global chart palette in Django settings to blend with your admin theme:
+## Theme / Palette (optional)
 
 ```python
 ADMIN_LIST_CHARTS = {
-    "palette": {
-        "accent": "#1f5fa6",
-        "series": [
-            "#1f5fa6",
-            "#2f9e44",
-            "#d6336c",
-            "#0c8599",
-            "#9c36b5",
-            "#e67700",
+    'palette': {
+        'accent': '#1f5fa6',
+        'series': [
+            '#1f5fa6',
+            '#2f9e44',
+            '#d6336c',
+            '#0c8599',
+            '#e67700',
+            '#6b7280',
         ],
-    }
+    },
 }
 ```
 
-- `palette.accent`: main bar color and primary chart accent
-- `palette.series`: line/context series colors, in order
+- `palette.accent`: primary bar/accent color
+- `palette.series`: ordered series colors
 
 If omitted, colors are derived from Django admin CSS variables.
 
-### Practical notes
+## Agent-Friendly Integration Notes
 
-- Keep `list_filter` meaningful; facet mode follows the currently filtered changelist queryset.
-- If your model has many candidate fields, start with auto mode, then pin explicit fields for stable output.
-- For best readability, keep boolean overlay fields to 2-3 and categorical fields to 1-2.
+If you are delegating setup to a coding agent, ask it to do exactly this:
 
-## Local reference project
+1. Install package: `pip install django-admin-list-charts`
+2. Add `'admin_list_charts'` to `INSTALLED_APPS`
+3. For each admin class that needs charts:
+   - mix in `ListChartMixin`
+   - ensure `date_hierarchy` is set
+   - keep meaningful `list_filter` fields for facet mode
+4. Run migrations and start server
+5. Verify in Django admin changelist:
+   - base timeline appears
+   - enabling facets shows sidebar distribution charts
 
-This repository includes a tiny Django project at `example_project/` for manual testing while developing this package.
+This package is intentionally configuration-light, so most projects work with only those steps.
 
-The demo app used by this project lives in `example_project/demo/` and exists for local testing purposes. It is not part of the reusable `admin_list_charts` package API.
+## Local Reference Project
 
-1. Install this package in editable mode:
+This repository includes `example_project/` for manual testing.
 
-   `python -m pip install -e .`
+```bash
+python -m pip install -e .
+python example_project/manage.py migrate
+python example_project/manage.py createsuperuser
+python example_project/manage.py seed_visits --truncate --days 180 --min-per-day 120 --max-per-day 450
+python example_project/manage.py runserver
+```
 
-2. Run migrations in the example project:
+Then open `http://127.0.0.1:8000/admin/` and inspect the `Visits` changelist.
 
-   `python example_project/manage.py migrate`
+## Examples
 
-3. Create an admin user:
+![Example 1: Django admin list charts with bright theme](https://github.com/foorilla/django-admin-list-charts/raw/main/django-admin-list-charts_example_1_bright_screen.png)
 
-   `python example_project/manage.py createsuperuser`
-
-4. Seed chartable demo data (high-volume, multi-facet):
-
-   `python example_project/manage.py seed_visits --truncate --days 180 --min-per-day 120 --max-per-day 450`
-
-5. Start the server and open admin:
-
-   `python example_project/manage.py runserver`
-
-Then browse to `http://127.0.0.1:8000/admin/` and open `Visits` to verify list charts and filter combinations.
-
-When `Show counts` (`_facets`) is enabled in the changelist sidebar, additional high-density charts are rendered. By default, the mixin auto-selects the most informative choice and boolean fields, so this works with little or no per-admin configuration in most cases.
+![Example 2: Django admin list charts with dark theme](https://github.com/foorilla/django-admin-list-charts/raw/main/django-admin-list-charts_example_2_dark_screen.png)
 
 ## Acknowledgements
 
-This rather pragmatic solution was heavily inspired by the work of Dani Hodovic (see [https://findwork.dev/blog/adding-charts-to-django-admin/](https://findwork.dev/blog/adding-charts-to-django-admin/)).
+Inspired by Dani Hodovic's article on adding charts to Django admin:
+https://findwork.dev/blog/adding-charts-to-django-admin/

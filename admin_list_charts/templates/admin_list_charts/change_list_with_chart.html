@@ -9,7 +9,7 @@
 <style>
 #listChartLayout {
     display: flex;
-    gap: 14px;
+    gap: 10px;
     align-items: stretch;
     margin: 0 0 .15em;
 }
@@ -20,8 +20,26 @@
 }
 
 #listChartContext {
-    width: 260px;
+    width: 246px;
     display: none;
+    height: 320px;
+}
+
+#chartContextCharts {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.chartContextSlot {
+    flex: 1;
+    min-height: 0;
+}
+
+.chartContextSlot canvas {
+    width: 100%;
+    height: 100%;
 }
 
 @media (max-width: 900px) {
@@ -35,7 +53,8 @@
 
     #listChartContext {
         width: 100%;
-        margin-top: .75em;
+        margin-top: .65em;
+        height: 295px;
     }
 }
 </style>
@@ -50,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var palette = payload.palette || {};
     var listChartCanvas = document.getElementById('listChart');
 
-    listChartCanvas.style.height = payload.facets_on ? '400px' : '180px';
+    listChartCanvas.style.height = payload.facets_on ? '320px' : '144px';
 
     function getAdminVar(name, fallback) {
         var value = getComputedStyle(document.documentElement).getPropertyValue(name);
@@ -89,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var danger = getAdminVar('--delete-button-bg', '#c0392b');
     var warning = getAdminVar('--message-warning-bg', '#ea580c');
     var neutral = getAdminVar('--body-quiet-color', '#6b7280');
+    var gridColor = getAdminVar('--hairline-color', getAdminVar('--border-color', 'rgba(107, 114, 128, 0.32)'));
     var defaultSeries = [accent, secondary, linkColor, danger, warning, neutral];
     var colors = Array.isArray(palette.series) && palette.series.length ? palette.series : defaultSeries;
 
@@ -109,6 +129,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .sort((a, b) => a.x - b.x);
     }
 
+    function pointMap(points) {
+        var mapped = {};
+        normalizeSeries(points).forEach((point) => {
+            mapped[point.x.toISOString()] = point.y;
+        });
+        return mapped;
+    }
+
     function sumSeries(points) {
         return normalizeSeries(points).reduce((sum, point) => sum + point.y, 0);
     }
@@ -122,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         type: 'bar',
         label: objectLabel,
         data: volumeValues,
-        backgroundColor: toRgba(accent, payload.facets_on ? 0.22 : 0.16),
+        backgroundColor: toRgba(accent, payload.facets_on ? 0.2 : 0.14),
         borderColor: accent,
         borderWidth: 1,
         yAxisID: 'yCount'
@@ -130,20 +158,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     var rateSeries = (payload.rates || []).slice(0, 3);
     rateSeries.forEach((series, idx) => {
-        var values = {};
-        normalizeSeries(series.data).forEach((point) => {
-            values[point.x.toISOString()] = point.y * 100;
-        });
+        var values = pointMap(series.data);
         datasets.push({
             type: 'line',
             label: series.label,
-            data: volumePoints.map((point) => values[point.x.toISOString()] || 0),
+            data: volumePoints.map((point) => values[point.x.toISOString()] ? values[point.x.toISOString()] * 100 : 0),
             borderColor: colors[idx % colors.length],
             backgroundColor: colors[idx % colors.length],
             borderWidth: 2,
             pointRadius: 1,
             pointHoverRadius: 3,
-            tension: 0.25,
+            tension: 0.22,
             yAxisID: 'yRate'
         });
     });
@@ -160,7 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             plugins: {
                 legend: {
                     display: payload.facets_on,
-                    position: 'bottom'
+                    position: 'bottom',
+                    labels: { boxWidth: 10, padding: 10 }
                 },
                 tooltip: {
                     mode: 'index',
@@ -178,16 +204,21 @@ document.addEventListener('DOMContentLoaded', () => {
             scales: {
                 x: {
                     ticks: {
-                        display: payload.facets_on
+                        display: true,
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: payload.facets_on ? 12 : 10
                     },
                     grid: {
-                        display: payload.facets_on
+                        display: payload.facets_on,
+                        color: gridColor
                     }
                 },
                 yCount: {
                     type: 'linear',
                     position: 'left',
                     beginAtZero: true,
+                    grid: { color: gridColor },
                     ticks: { precision: 0 }
                 },
                 yRate: {
@@ -195,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     position: 'right',
                     beginAtZero: true,
                     suggestedMax: 100,
-                    grid: { drawOnChartArea: false },
+                    grid: { drawOnChartArea: false, color: gridColor },
                     ticks: { callback: (value) => value + '%' }
                 }
             }
@@ -207,98 +238,89 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     var contextPanel = document.getElementById('listChartContext');
+    var chartContextCharts = document.getElementById('chartContextCharts');
     contextPanel.style.display = 'block';
+    var mainOverlayFields = new Set(rateSeries.map((series) => series.field).filter(Boolean));
 
-    var facetTotals = (payload.facets || []).map((facet) => {
-        var totals = facet.series.map((series) => ({
+    var facetDistributions = (payload.facets || []).map((facet) => {
+        var totals = (facet.series || []).map((series) => ({
             label: series.label,
             value: sumSeries(series.data)
         }));
-        totals.sort((a, b) => b.value - a.value);
+        totals = totals
+            .filter((item) => item.value > 0)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 7);
         return {
             field: facet.field,
-            label: facet.label,
+            title: facet.label,
             totals: totals
         };
-    });
+    }).filter((facet) => facet.totals.length && !mainOverlayFields.has(facet.field));
 
-    var topBlock = document.getElementById('chartContextStats');
-    var latestRates = rateSeries.map((series) => {
-        var points = normalizeSeries(series.data);
-        var lastPoint = points.length ? points[points.length - 1].y * 100 : 0;
-        return series.label + ': ' + lastPoint.toFixed(1) + '%';
-    });
-
-    topBlock.innerHTML = ''
-        + '<div style="margin:0;font-size:1.2em;font-weight:600;line-height:1.1;">' + (payload.total_count || 0) + '</div>'
-        + '<div style="font-size:.82em;opacity:.8;margin-bottom:.6em;">filtered ' + objectLabel + '</div>'
-        + (latestRates.length ? '<div style="font-size:.8em;margin-top:.6em;line-height:1.4;">' + latestRates.join('<br>') + '</div>' : '');
-
-    var channelFacet = facetTotals.find((facet) => facet.field === 'channel') || facetTotals[0];
-    var deviceFacet = facetTotals.find((facet) => facet.field === 'device_type') || facetTotals[1];
-
-    if (channelFacet && channelFacet.totals.length) {
-        new Chart(document.getElementById('chartContextFacetA').getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: channelFacet.totals.map((item) => item.label),
-                datasets: [{
-                    data: channelFacet.totals.map((item) => item.value),
-                    backgroundColor: channelFacet.totals.map((_, idx) => colors[idx % colors.length]),
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                plugins: {
-                    title: { display: true, text: channelFacet.label },
-                    legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } }
-                }
-            }
-        });
+    var MAX_SIDEBAR_CHARTS = 3;
+    var selectedFacets = facetDistributions.slice(0, MAX_SIDEBAR_CHARTS);
+    if (!selectedFacets.length) {
+        contextPanel.style.display = 'none';
+        return;
     }
+    selectedFacets.forEach((_, idx) => {
+        var slot = document.createElement('div');
+        slot.className = 'chartContextSlot';
+        slot.innerHTML = '<canvas id="chartContextFacet' + idx + '"></canvas>';
+        chartContextCharts.appendChild(slot);
+    });
 
-    if (deviceFacet && deviceFacet.totals.length) {
-        var topDevices = deviceFacet.totals.slice(0, 5);
-        new Chart(document.getElementById('chartContextFacetB').getContext('2d'), {
+    selectedFacets.forEach((facet, idx) => {
+        var target = document.getElementById('chartContextFacet' + idx);
+        if (!target) {
+            return;
+        }
+
+        var config = {
             type: 'bar',
             data: {
-                labels: topDevices.map((item) => item.label),
+                labels: facet.totals.map((item) => item.label),
                 datasets: [{
-                    data: topDevices.map((item) => item.value),
-                    backgroundColor: toRgba(accent, 0.2),
-                    borderColor: accent,
+                    label: facet.title,
+                    data: facet.totals.map((item) => item.value),
+                    backgroundColor: facet.totals.map((_, colorIndex) => toRgba(colors[colorIndex % colors.length], 0.34)),
+                    borderColor: facet.totals.map((_, colorIndex) => colors[colorIndex % colors.length]),
                     borderWidth: 1
                 }]
             },
             options: {
+                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                indexAxis: 'y',
                 plugins: {
-                    title: { display: true, text: deviceFacet.label },
                     legend: { display: false }
                 },
                 scales: {
-                    x: { beginAtZero: true, ticks: { precision: 0 } }
+                    x: {
+                        beginAtZero: true,
+                        reverse: true,
+                        grid: { color: gridColor },
+                        ticks: { precision: 0 }
+                    },
+                    y: { ticks: { autoSkip: false, font: { size: 10 } } }
                 }
             }
-        });
-    }
+        };
+
+        // Keep sidebar visuals legible in dense, reduced-height cards.
+        new Chart(target.getContext('2d'), config);
+    });
 });
 </script>
 
 <div id="listChartLayout">
     <div id="listChartMain">
-        <canvas id="listChart" style="width:100%; height:180px;"></canvas>
+        <canvas id="listChart" style="width:100%; height:144px;"></canvas>
     </div>
     <aside id="listChartContext">
-        <div id="chartContextStats" style="padding:0 .2em .3em; margin:0 0 .35em;"></div>
-        <div style="height:140px; margin-bottom:.55em;"><canvas id="chartContextFacetA" style="width:100%; height:100%;"></canvas></div>
-        <div style="height:133px;"><canvas id="chartContextFacetB" style="width:100%; height:100%;"></canvas></div>
+        <div id="chartContextCharts"></div>
     </aside>
 </div>
 

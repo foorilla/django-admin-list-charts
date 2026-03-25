@@ -15,7 +15,7 @@ class ListChartMixin(object):
     chart_top_fields = ()
     chart_facet_max_series = 6
     chart_auto_select = True
-    chart_auto_max_facet_fields = 2
+    chart_auto_max_facet_fields = 4
     chart_auto_max_rate_fields = 3
 
     def _get_chart_period(self, request):
@@ -37,7 +37,7 @@ class ListChartMixin(object):
         return tuple(getattr(self, 'chart_top_fields', ()))
 
     def get_chart_auto_max_facet_fields(self, request):
-        return max(0, int(getattr(self, 'chart_auto_max_facet_fields', 2)))
+        return max(0, int(getattr(self, 'chart_auto_max_facet_fields', 4)))
 
     def get_chart_auto_max_rate_fields(self, request):
         return max(0, int(getattr(self, 'chart_auto_max_rate_fields', 3)))
@@ -68,6 +68,40 @@ class ListChartMixin(object):
 
         return normalized
 
+    def _get_auto_list_filter_facet_candidates(self):
+        candidates = []
+        seen = set()
+
+        for raw_filter in getattr(self, 'list_filter', ()) or ():
+            field_name = None
+            if isinstance(raw_filter, str):
+                field_name = raw_filter
+            elif isinstance(raw_filter, (tuple, list)) and raw_filter:
+                head = raw_filter[0]
+                if isinstance(head, str):
+                    field_name = head
+
+            if isinstance(field_name, str) and '__' in field_name:
+                field_name = field_name.split('__', 1)[0]
+
+            if not field_name or field_name in seen:
+                continue
+
+            field = self._get_model_field(field_name)
+            if field is None:
+                continue
+            if not getattr(field, 'concrete', False):
+                continue
+            if getattr(field, 'many_to_many', False) or getattr(field, 'one_to_many', False):
+                continue
+            if field.name == self.date_hierarchy:
+                continue
+
+            seen.add(field_name)
+            candidates.append(field_name)
+
+        return candidates
+
     def _get_auto_choice_facet_candidates(self):
         candidates = []
         for field in self.model._meta.get_fields():
@@ -91,13 +125,26 @@ class ListChartMixin(object):
                 candidates.append(field.name)
         return candidates
 
-    def _select_auto_facet_fields(self, qs, request, total_rows):
+    def _select_auto_facet_fields(self, qs, request, total_rows, exclude_fields=None):
         max_fields = self.get_chart_auto_max_facet_fields(request)
         if max_fields <= 0 or total_rows <= 0:
             return ()
 
+        exclude_fields = set(exclude_fields or ())
+
+        sequential_candidates = self._get_auto_list_filter_facet_candidates()
+        fallback_candidates = self._get_auto_choice_facet_candidates()
+        all_candidates = sequential_candidates + [
+            field_name for field_name in fallback_candidates if field_name not in sequential_candidates
+        ]
+
+        if not all_candidates:
+            return ()
+
         scored = []
-        for field_name in self._get_auto_choice_facet_candidates():
+        for candidate_index, field_name in enumerate(all_candidates):
+            if field_name in exclude_fields:
+                continue
             rows = list(qs.values(field_name).annotate(c=Count('pk')).order_by('-c'))
             non_empty_rows = [
                 row
@@ -113,11 +160,31 @@ class ListChartMixin(object):
             diversity = min(unique_count, self.chart_facet_max_series) / max(1, self.chart_facet_max_series)
             coverage = non_empty_total / total_rows
             spread = 1.0 - dominant_share
-            score = (coverage * 0.5) + (spread * 0.35) + (diversity * 0.15)
-            scored.append((field_name, score))
+            sequence_bias = max(0.0, 1.0 - (candidate_index * 0.1))
+            score = (coverage * 0.45) + (spread * 0.3) + (diversity * 0.15) + (sequence_bias * 0.1)
+            scored.append(
+                {
+                    'field': field_name,
+                    'score': score,
+                    'index': candidate_index,
+                }
+            )
 
-        scored.sort(key=lambda item: item[1], reverse=True)
-        return tuple(field_name for field_name, _ in scored[:max_fields])
+        if not scored:
+            return ()
+
+        ranked = sorted(scored, key=lambda item: item['score'], reverse=True)
+        selected = [item['field'] for item in ranked if item['score'] >= 0.25][:max_fields]
+
+        if len(selected) < max_fields:
+            for item in sorted(scored, key=lambda item: item['index']):
+                if item['field'] in selected:
+                    continue
+                selected.append(item['field'])
+                if len(selected) >= max_fields:
+                    break
+
+        return tuple(selected[:max_fields])
 
     def _select_auto_rate_fields(self, qs, request):
         max_fields = self.get_chart_auto_max_rate_fields(request)
@@ -154,9 +221,49 @@ class ListChartMixin(object):
         except FieldDoesNotExist:
             return None
 
-    def _display_value(self, field, value):
+    def _get_relation_display_map(self, field, keys):
+        if field is None:
+            return {}
+        if not (
+            getattr(field, 'many_to_one', False)
+            or getattr(field, 'one_to_one', False)
+            or getattr(field, 'many_to_many', False)
+        ):
+            return {}
+
+        related_model = getattr(field, 'related_model', None)
+        if related_model is None:
+            return {}
+
+        label_attr = None
+        for candidate in ('label', 'name'):
+            if hasattr(related_model, candidate):
+                label_attr = candidate
+                break
+
+        if label_attr is None:
+            return {}
+
+        relation_ids = [key for key in keys if key not in (None, '')]
+        if not relation_ids:
+            return {}
+
+        objects = related_model._default_manager.filter(pk__in=relation_ids)
+        display_map = {}
+        for obj in objects:
+            relation_id = getattr(obj, related_model._meta.pk.attname)
+            display_value = getattr(obj, label_attr, None)
+            if display_value in (None, ''):
+                display_value = relation_id
+            display_map[relation_id] = str(display_value)
+
+        return display_map
+
+    def _display_value(self, field, value, relation_display_map=None):
         if value in (None, ''):
             return '(empty)'
+        if relation_display_map and value in relation_display_map:
+            return relation_display_map[value]
         if field is not None and getattr(field, 'choices', None):
             choices = dict(field.flatchoices)
             return str(choices.get(value, value))
@@ -202,11 +309,12 @@ class ListChartMixin(object):
                 : self.chart_facet_max_series
             ]
         ]
+        relation_display_map = self._get_relation_display_map(field, keys)
 
         series = [
             {
                 'key': key,
-                'label': self._display_value(field, key),
+                'label': self._display_value(field, key, relation_display_map),
                 'data': points.get(key, []),
             }
             for key in keys
@@ -263,13 +371,24 @@ class ListChartMixin(object):
             field = self._get_model_field(field_name)
             if field is None:
                 continue
-            rows = (
+            rows = list(
                 qs.values(field_name)
                 .annotate(y=Count('pk'))
                 .order_by('-y')[: max(1, int(limit))]
             )
+            relation_display_map = self._get_relation_display_map(
+                field,
+                [row[field_name] for row in rows],
+            )
             data = [
-                {'x': self._display_value(field, row[field_name]), 'y': row['y']}
+                {
+                    'x': self._display_value(
+                        field,
+                        row[field_name],
+                        relation_display_map,
+                    ),
+                    'y': row['y'],
+                }
                 for row in rows
             ]
             charts.append(
@@ -297,21 +416,31 @@ class ListChartMixin(object):
         if not facets_on:
             return payload
 
+        rate_fields = self.get_chart_rate_fields(request)
+        if not rate_fields and self.chart_auto_select:
+            rate_fields = self._select_auto_rate_fields(qs, request)
+        rate_field_set = set(rate_fields)
+
+        if rate_fields:
+            payload['rates'] = self._get_rate_data(qs, period, rate_fields)
+
         facet_fields = self.get_chart_facet_fields(request)
-        if not facet_fields and self.chart_auto_select:
-            facet_fields = self._select_auto_facet_fields(qs, request, total_rows)
+        if facet_fields:
+            facet_fields = tuple(
+                field_name for field_name in facet_fields if field_name not in rate_field_set
+            )
+        elif self.chart_auto_select:
+            facet_fields = self._select_auto_facet_fields(
+                qs,
+                request,
+                total_rows,
+                exclude_fields=rate_field_set,
+            )
 
         for field_name in facet_fields:
             facet = self._get_facet_data(qs, period, field_name)
             if facet and facet['series']:
                 payload['facets'].append(facet)
-
-        rate_fields = self.get_chart_rate_fields(request)
-        if not rate_fields and self.chart_auto_select:
-            rate_fields = self._select_auto_rate_fields(qs, request)
-
-        if rate_fields:
-            payload['rates'] = self._get_rate_data(qs, period, rate_fields)
 
         top_fields = self.get_chart_top_fields(request)
         if top_fields:
