@@ -28,7 +28,7 @@ class ExampleTests(TestCase):
                 obj = admin.site.get_model_admin(model)
                 self.assertIsNone(obj.date_hierarchy)
                 count = model.objects.count()
-                payload = obj.get_chart_payload(request, model.objects.all(), total_rows=count)
+                payload = obj.get_chart_payload(request, model.objects.all(), total_rows=count, facets_on=True)
                 self.assertEqual(payload['date_field'], name)
                 self.assertTrue(payload['volume'])
                 self.assertTrue(payload['facets'])

@@ -14,15 +14,13 @@ from django.urls import path, reverse
 from django.utils import timezone, translation
 from django.utils.translation import gettext as _
 
-from .charts import ChartBuilder, metric_paths
+from .charts import ChartBuilder
 
 
 class ListChartMixin:
     change_list_template = 'admin_list_charts/change_list_with_chart.html'
     chart_facet_fields = ()
     chart_rate_fields = ()
-    chart_top_fields = ()
-    chart_metrics = {}
     chart_labels = {}
     chart_facet_max_series = 6
     chart_auto_select = True
@@ -77,13 +75,6 @@ class ListChartMixin:
 
     def get_chart_rate_fields(self, request):
         return tuple(self.chart_rate_fields)
-
-    def get_chart_top_fields(self, request):
-        return tuple(self.chart_top_fields)
-
-    def get_chart_metrics(self, request):
-        """A mapping of display names to Django Count, Sum or Avg expressions."""
-        return self.chart_metrics
 
     def get_chart_auto_max_facet_fields(self, request):
         return max(0, int(self.chart_auto_max_facet_fields))
@@ -149,9 +140,9 @@ class ListChartMixin:
             params[field_name + '__exact'] = str(value)
         return '?' + params.urlencode()
 
-    def get_chart_payload(self, request, qs, period=None, facets_on=True, total_rows=None):
-        # facets_on remains accepted for callers upgrading from 0.4; charts are always visible.
-        return ChartBuilder(self, request, qs).build(period or self._get_chart_period(request), total_rows)
+    def get_chart_payload(self, request, qs, period=None, facets_on=False, total_rows=None):
+        return ChartBuilder(self, request, qs).build(
+            period or self._get_chart_period(request), total_rows, facets_on)
 
     def _chart_payload(self, request, changelist):
         queryset = self.get_chart_queryset(request, changelist)
@@ -167,8 +158,7 @@ class ListChartMixin:
                 'date': self.get_chart_date_field(request),
                 'facets': self.get_chart_facet_fields(request),
                 'rates': self.get_chart_rate_fields(request),
-                'tops': self.get_chart_top_fields(request),
-                'metrics': repr(self.get_chart_metrics(request)),
+                'counts': changelist.add_facets,
                 'labels': self.chart_labels,
                 'auto': self.chart_auto_select,
                 'filters': repr(self.get_list_filter(request)),
@@ -183,12 +173,13 @@ class ListChartMixin:
                 'count': changelist.result_count,
             }
             digest = hashlib.sha256(json.dumps(config, default=str, sort_keys=True).encode()).hexdigest()
-            key = 'admin_list_charts:1:' + digest
+            key = 'admin_list_charts:2:' + digest
             cached = caches[self.chart_cache_alias].get(key)
             if cached is not None:
                 return cached
         total = changelist.result_count if queryset is changelist.queryset else None
-        payload = self.get_chart_payload(request, queryset, total_rows=total)
+        payload = self.get_chart_payload(
+            request, queryset, facets_on=changelist.add_facets, total_rows=total)
         payload['object_label'] = str(changelist.opts.verbose_name_plural)
         payload['palette'] = self.get_chart_palette(request)
         if key:
@@ -234,8 +225,7 @@ class ListChartMixin:
     def check(self, **kwargs):
         errors = super().check(**kwargs)
         queryset = self.model._default_manager.all()
-        for name in dict.fromkeys((*self.chart_facet_fields, *self.chart_rate_fields,
-                                   *(item[0] for item in self.chart_top_fields))):
+        for name in dict.fromkeys((*self.chart_facet_fields, *self.chart_rate_fields)):
             # Unknown roots can be annotations supplied by a request-dependent queryset.
             try:
                 self.model._meta.get_field(name.split('__', 1)[0])
@@ -246,29 +236,6 @@ class ListChartMixin:
                     _('Chart field “%(name)s” is not a single-valued model field; '
                       'provide it as a scalar queryset annotation.') % {'name': name},
                     obj=self.__class__, id='admin_list_charts.W001'))
-        for name, expression in self.chart_metrics.items():
-            if not isinstance(expression, (models.Count, models.Sum, models.Avg)):
-                errors.append(checks.Error(
-                    f'Chart metric {name!r} must be Count, Sum or Avg.',
-                    obj=self.__class__, id='admin_list_charts.E001'))
-                continue
-            for path_name in metric_paths(expression):
-                parts = path_name.split('__')
-                model = self.model
-                for part in parts:
-                    try:
-                        field = model._meta.get_field(part)
-                    except FieldDoesNotExist:
-                        break  # Scalar annotation or lookup suffix.
-                    if field.many_to_many or field.one_to_many:
-                        errors.append(checks.Error(
-                            f'Chart metric {name!r} traverses a multi-valued relation; '
-                            'annotate a scalar subquery first.',
-                            obj=self.__class__, id='admin_list_charts.E003'))
-                        break
-                    if not field.is_relation:
-                        break
-                    model = field.related_model
         for name in ('chart_facet_max_series', 'chart_auto_max_facet_fields',
                      'chart_auto_max_rate_fields', 'chart_cache_timeout'):
             if not isinstance(getattr(self, name), int) or getattr(self, name) < 0:

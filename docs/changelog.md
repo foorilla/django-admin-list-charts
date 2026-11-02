@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+- Restore timeline-only initial loads and `facets_on=False`; Django’s effective counts mode enables rates/distributions for inline and lazy rendering.
+- Restore direct aggregation for ordinary querysets, avoiding unconditional primary-key wrappers and unused rate annotations. Keep duplicate-safe handling for multiplying joins and grouped/distinct sources.
+- Aggregate timelines once at the requested period and roll up counts and rate totals in Python to at most 240 display intervals, preserving complete history and drill-down boundaries.
+- Remove More charts, hidden panels, numeric metrics and top-N settings/getters/checks. Enabled distributions remain visible; preserve styling, positioning, keyboard controls, themes, labels and legend choices.
+- Include effective counts mode in cache keys. Clarify exact-aggregation costs, separate Django counts and lazy/cache limits; refresh examples and gallery.
+
 ## 0.5
 
 - Automatic date, choice and boolean discovery, independent of Django’s filter counts.

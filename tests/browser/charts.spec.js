@@ -39,11 +39,14 @@ async function styleCharts(page, theme) {
 
 async function compact(page) {
   const root = page.locator('.alc');
-  expect(await root.evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(300);
+  if (!await root.locator('[data-chart="distribution"]').count()) {
+    expect(await root.evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(300);
+  }
   await expect(root).toHaveCSS('margin-bottom', '8px');
   await expect(root.locator('table, select')).toHaveCount(0);
   await expect(root.getByText('View chart data')).toHaveCount(0);
-  await expect(root.locator('details[open]')).toHaveCount(0);
+  await expect(root.locator('details, .alc-panels, .alc-card[hidden]')).toHaveCount(0);
+  await expect(root.locator('canvas:visible')).toHaveCount(await root.locator('canvas').count());
   expect(await root.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   const chart = await root.boundingBox();
   const changelist = await page.locator('#changelist').boundingBox();
@@ -70,30 +73,32 @@ async function capture(page, filename) {
   } else test.info().annotations.push({type: 'visual-comparison-skipped', description: 'Baselines target Chromium on macOS.'});
 }
 
-async function hiddenCanvasesAreEmpty(page) {
-  await expect.poll(() => page.locator('.alc canvas').evaluateAll(canvases => canvases.filter(canvas => !canvas.checkVisibility()).every(canvas =>
-    !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(value => value)))).toBe(true);
-}
-
-for (const [name, url] of Object.entries(examples)) {
-  for (const theme of ['light', 'dark']) {
-    for (const [device, width] of [['desktop', 1280], ['mobile', 390]]) {
-      test(`${name} ${theme} ${device}`, async ({page}) => {
-        const errors = [], external = [];
-        page.on('pageerror', error => errors.push(error.message));
-        page.on('request', request => {if (!request.url().startsWith('http://127.0.0.1:8765/')) external.push(request.url());});
-        await page.setViewportSize({width, height: 960});
-        await open(page, url, theme);
-        await compact(page);
-        await expect(page.locator('.alc canvas:visible')).not.toHaveCount(0);
-        await hiddenCanvasesAreEmpty(page);
-        await capture(page, `${name}-${theme}-${device}.png`);
-        expect(errors).toEqual([]);
-        expect(external).toEqual([]);
-        expect(await page.evaluate(() => typeof window.Chart)).toBe('undefined');
-        const issues = await new AxeBuilder({page}).include('.alc').analyze();
-        expect(issues.violations).toEqual([]);
-      });
+for (const counts of [false, true]) {
+  for (const [name, url] of Object.entries(examples)) {
+    for (const theme of ['light', 'dark']) {
+      for (const [device, width] of [['desktop', 1280], ['mobile', 390]]) {
+        test(`${name} ${counts ? "counts " : ""}${theme} ${device}`, async ({page}) => {
+          const errors = [], external = [];
+          page.on('pageerror', error => errors.push(error.message));
+          page.on('request', request => {if (!request.url().startsWith('http://127.0.0.1:8765/')) external.push(request.url());});
+          await page.setViewportSize({width, height: 960});
+          await open(page, url + (counts ? '?_facets=True' : ''), theme);
+          await compact(page);
+          await expect(page.locator('.alc canvas:visible')).not.toHaveCount(0);
+          const payload = JSON.parse(await page.locator('#admin-list-charts-data').textContent());
+          expect(Boolean(payload.facets.length)).toBe(counts);
+          if (!counts) {
+            expect(payload.rates).toEqual([]);
+            await expect(page.locator('.alc canvas')).toHaveCount(1);
+          }
+          await capture(page, `${name}${counts ? '-counts' : ''}-${theme}-${device}.png`);
+          expect(errors).toEqual([]);
+          expect(external).toEqual([]);
+          expect(await page.evaluate(() => typeof window.Chart)).toBe('undefined');
+          const issues = await new AxeBuilder({page}).include('.alc').analyze();
+          expect(issues.violations).toEqual([]);
+        });
+      }
     }
   }
 }
@@ -102,113 +107,36 @@ for (const [name, url] of Object.entries(advanced)) {
   test(`advanced ${name}`, async ({page}) => {
     await open(page, url);
     await compact(page);
-    if (name === 'commerce') {
-      await expect(page.locator('.alc canvas[aria-label="Revenue (USD)"]')).toBeHidden();
-      await page.locator('.alc summary').click();
-      await expect(page.locator('.alc canvas[aria-label="Revenue (USD)"]')).toBeVisible();
-    }
-    if (name === 'memberships') expect(await page.locator('.alc').getAttribute('data-endpoint')).toContain('chart-data');
-    const issues = await new AxeBuilder({page}).include('.alc').analyze();
-    expect(issues.violations).toEqual([]);
+    await expect(page.locator('.alc canvas')).toHaveCount(1);
+    await page.getByRole('link', {name: 'Show counts', exact: true}).click();
+    await expect(page.locator('.alc')).toHaveAttribute('data-ready', 'true');
+    await compact(page);
+    await expect(page.locator('.alc canvas[data-chart="metric"]')).toHaveCount(0);
+    await expect(page.locator('.alc canvas[data-chart="distribution"]').first()).toBeVisible();
+    await page.getByRole('link', {name: 'Hide counts', exact: true}).click();
+    await expect(page.locator('.alc')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.alc canvas')).toHaveCount(1);
   });
 }
 
-for (const mode of ['more', 'counts']) {
-  for (const theme of ['light', 'dark']) {
-    for (const [device, width] of [['desktop', 1280], ['mobile', 390]]) {
-      test(`${mode === 'counts' ? 'counts preserve charts' : 'expanded more'} ${theme} ${device}`, async ({page}) => {
-        await page.setViewportSize({width, height: 960});
-        await open(page, advanced.commerce, theme);
-        const root = page.locator('.alc');
-        const initial = await root.screenshot();
-        if (mode === 'more') {
-          await page.locator('.alc summary').focus();
-          await page.keyboard.press('Enter');
-          await expect(page.locator('.alc details')).toHaveAttribute('open', '');
-        } else {
-          await page.getByRole('link', {name: 'Show counts', exact: true}).click();
-          await expect(root).toHaveAttribute('data-ready', 'true');
-          await styleCharts(page, theme);
-          await compact(page);
-          expect(await root.screenshot()).toEqual(initial);
-        }
-        if (mode === 'more') await expect(root.locator('canvas:visible')).toHaveCount(await root.locator('canvas').count());
-        expect(await root.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-        await capture(page, `commerce-${mode}-${theme}-${device}.png`);
-        const issues = await new AxeBuilder({page}).include('.alc').analyze();
-        expect(issues.violations).toEqual([]);
-        if (mode === 'counts') {
-          await page.getByRole('link', {name: 'Hide counts', exact: true}).click();
-          await expect(root).toHaveAttribute('data-ready', 'true');
-          await styleCharts(page, theme);
-          await compact(page);
-          expect(await root.screenshot()).toEqual(initial);
-        }
-      });
-    }
-  }
-}
-
-test('filter counts preserve an open More charts disclosure without persisting regular reloads', async ({page}) => {
-  await open(page, advanced.commerce);
-  const root = page.locator('.alc');
-  await root.locator('summary').click();
-  await root.locator('summary').evaluate(element => element.blur());
-  const initial = await root.screenshot();
-  for (const label of ['Show counts', 'Hide counts']) {
-    await page.getByRole('link', {name: label, exact: true}).click();
-    await expect(root).toHaveAttribute('data-ready', 'true');
-    await styleCharts(page, 'light');
-    await expect(root.locator('details')).toHaveAttribute('open', '');
-    expect(await root.screenshot()).toEqual(initial);
-  }
-  await page.reload();
-  await expect(root).toHaveAttribute('data-ready', 'true');
-  await compact(page);
-});
-
-test('container overflow, keyboard expansion, resizing and themes preserve disclosure state', async ({page}) => {
+test('all enabled charts remain visible across container resizing and themes', async ({page}) => {
   await page.setViewportSize({width: 2200, height: 960});
-  await open(page, examples.visits);
+  await open(page, examples.visits + '?_facets=True');
   const root = page.locator('.alc');
   const count = await root.locator('.alc-card').count();
+  expect(count).toBeGreaterThan(3);
   await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(2);
-  await expect(root.locator('canvas:visible')).toHaveCount(3);
-  await root.evaluate(element => element.style.width = '695px');
-  await expect(root.locator('canvas:visible')).toHaveCount(1);
-  await root.evaluate(element => element.style.width = '696px');
-  await expect(root.locator('canvas:visible')).toHaveCount(3);
-  await compact(page);
-  await root.evaluate(element => element.style.width = '320px');
-  await expect(root.locator('canvas:visible')).toHaveCount(1);
-  await expect(root.locator('.alc-timeline canvas')).toBeVisible();
-  await compact(page);
-  await hiddenCanvasesAreEmpty(page);
-  await root.locator('summary').focus();
-  await page.keyboard.press('Enter');
-  await expect(root.locator('canvas:visible')).toHaveCount(count);
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  await expect(root.locator('details')).toHaveAttribute('open', '');
-  await root.evaluate(element => element.style.width = '1200px');
-  await compactOpen(page);
-  await root.evaluate(element => element.style.width = '320px');
-  await expect(root.locator('details')).toHaveAttribute('open', '');
-  await expect(root.locator('canvas:visible')).toHaveCount(count);
-  await root.locator('summary').click();
-  await expect(root.locator('canvas:visible')).toHaveCount(1);
-  await hiddenCanvasesAreEmpty(page);
-  await compact(page);
+  await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(count - 3);
+  for (const width of [695, 696, 320, 1200, 320]) {
+    await root.evaluate((element, width) => element.style.width = `${width}px`, width);
+    await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(width >= 696 ? 2 : 0);
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await compact(page);
+  }
 });
 
-async function compactOpen(page) {
-  const root = page.locator('.alc');
-  const timeline = await root.locator('.alc-timeline').boundingBox();
-  expect(timeline.width).toBeGreaterThanOrEqual((await root.boundingBox()).width * 2 / 3 - 1);
-  await expect(root.locator('details')).toHaveAttribute('open', '');
-}
-
 test('series controls work with the keyboard and preserve choices through resizing and themes', async ({page}) => {
-  await open(page, advanced.visits);
+  await open(page, advanced.visits + '?_facets=True');
   const root = page.locator('.alc');
   const control = root.locator('.alc-legend button').nth(1);
   const label = (await control.textContent()).trim();
@@ -223,6 +151,9 @@ test('series controls work with the keyboard and preserve choices through resizi
   await root.locator('.alc-timeline canvas').focus();
   await page.keyboard.press('ArrowRight');
   await expect(root.locator('[role="status"]')).not.toContainText(`${label}:`);
+  await page.getByRole('link', {name: 'Hide counts', exact: true}).click();
+  await expect(root).toHaveAttribute('data-ready', 'true');
+  await expect(root.locator('canvas')).toHaveCount(1);
   await page.getByRole('link', {name: 'Show counts', exact: true}).click();
   await expect(root).toHaveAttribute('data-ready', 'true');
   await expect(control).toHaveAttribute('aria-pressed', 'false');
@@ -252,11 +183,11 @@ test('filters, search, duplicate joins, keyboard drill-down and empty results', 
   await expect(page.locator('.alc')).toHaveAttribute('data-ready', 'true');
   await open(page, advanced.publishing + '?q=missing-nonexistent-value');
   await expect(page.locator('.alc')).toContainText('No chart data for this selection.');
-  await expect(page.locator('.alc summary')).toBeHidden();
+  await expect(page.locator('.alc details')).toHaveCount(0);
 });
 
 test('mouse drill-down on a distribution', async ({page}) => {
-  await open(page, examples.commerce);
+  await open(page, examples.commerce + '?_facets=True');
   const payload = JSON.parse(await page.locator('#admin-list-charts-data').textContent());
   const chart = page.locator('.alc-primary canvas[data-chart="distribution"]').first();
   const box = await chart.boundingBox();
@@ -276,7 +207,7 @@ test('auto theme transitions without a reload', async ({page}) => {
 
 test('lazy failure, retry, counts and hostile labels', async ({page}) => {
   await page.route('**/accountsubscriptions/chart-data/**', route => route.fulfill({status: 500}));
-  await page.goto(advanced.memberships);
+  await page.goto(advanced.memberships + '?_facets=True');
   await expect(page.locator('.alc')).toContainText('Charts could not be loaded.');
   await page.unroute('**/accountsubscriptions/chart-data/**');
   const attack = '<img src=x onerror="window.compromised=true">';
@@ -289,8 +220,6 @@ test('lazy failure, retry, counts and hostile labels', async ({page}) => {
   });
   await page.getByRole('button', {name: 'Retry', exact: true}).click();
   await expect(page.locator('.alc')).toHaveAttribute('data-ready', 'true');
-  await page.getByRole('link', {name: 'Show counts', exact: true}).click();
-  await expect(page.locator('.alc')).toHaveAttribute('data-ready', 'true');
   await compact(page);
   const canvas = page.locator('.alc canvas[data-chart="distribution"]').first();
   await canvas.focus();
@@ -302,7 +231,7 @@ test('lazy failure, retry, counts and hostile labels', async ({page}) => {
   expect(await page.evaluate(() => window.compromised)).toBeUndefined();
 });
 
-test('lazy charts without timelines, long labels, missing dates and primary top-N fallback', async ({page}) => {
+test('lazy distributions without timelines retain full labels and missing date notes', async ({page}) => {
   const longLabel = 'A category with a very long descriptive label that must remain readable in tooltips';
   await page.addInitScript(() => {
     window.chartText = [];
@@ -312,23 +241,21 @@ test('lazy charts without timelines, long labels, missing dates and primary top-
       return fillText.call(this, text, ...args);
     };
   });
-  let topOnly = false;
   await page.route('**/accountsubscriptions/chart-data/**', async route => {
     const response = await route.fetch();
     const payload = await response.json();
     payload.volume = [];
     payload.rates = [];
-    payload.metrics = [];
     payload.date_field = null;
     payload.missing_dates = 12;
     payload.missing_dates_label = '12 records have no date.';
     payload.facets[0].data[0].x = longLabel;
     payload.facets[0].label = longLabel;
-    if (topOnly) { payload.tops = payload.facets.slice(0, 1); payload.facets = []; }
+    payload.facets = payload.facets.slice(0, 1);
     await route.fulfill({json: payload});
   });
   await page.setViewportSize({width: 390, height: 960});
-  await open(page, advanced.memberships);
+  await open(page, advanced.memberships + '?_facets=True');
   const root = page.locator('.alc');
   await root.evaluate(element => element.style.width = '320px');
   await expect(root.locator('canvas[data-chart="timeline"]')).toHaveCount(0);
@@ -346,57 +273,6 @@ test('lazy charts without timelines, long labels, missing dates and primary top-
   await expect(root.locator('[role="status"]')).toContainText(longLabel);
   await page.keyboard.press('ArrowDown');
   await expect(root.locator('[role="status"]')).not.toContainText(`. ${longLabel}.`);
-  topOnly = true;
-  await open(page, advanced.memberships);
-  await expect(root.locator('canvas:visible')).toHaveCount(1);
-  await expect(root.locator('summary')).toBeHidden();
-  await compact(page);
-});
-
-test('metrics and top-N stay secondary until expanded', async ({page}) => {
-  await open(page, advanced.commerce);
-  const metrics = page.locator('.alc canvas[data-chart="metric"]');
-  await expect(metrics.first()).toBeHidden();
-  await page.locator('.alc summary').click();
-  await expect(metrics).toHaveCount(2);
-  await expect(metrics.first()).toBeVisible();
-  await metrics.first().focus();
-  await page.keyboard.press('End');
-  await expect(page.locator('.alc [role="status"]')).toContainText('Revenue (USD)');
-  await open(page, advanced.publishing);
-  const payload = JSON.parse(await page.locator('#admin-list-charts-data').textContent());
-  expect(payload.tops.length).toBeGreaterThan(0);
-  const top = page.locator('.alc-panels canvas').last();
-  await expect(page.locator('.alc-panels canvas').last()).toBeHidden();
-  await page.locator('.alc summary').click();
-  await expect(top).toBeVisible();
-});
-
-test('lazy decimal metrics preserve unknown values during keyboard navigation', async ({page}) => {
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => {
-    window.metricDots = [];
-    const arc = CanvasRenderingContext2D.prototype.arc;
-    CanvasRenderingContext2D.prototype.arc = function(x, y, radius, ...args) {
-      if (this.canvas.dataset.chart === 'metric') window.metricDots.push(radius);
-      return arc.call(this, x, y, radius, ...args);
-    };
-  });
-  await page.route('**/accountsubscriptions/chart-data/**', async route => {
-    const response = await route.fetch();
-    const payload = await response.json();
-    payload.metrics = [{label: 'Revenue', data: payload.volume.map((point, index) => ({...point, y: index === 1 ? '12.50' : null}))}];
-    await route.fulfill({json: payload});
-  });
-  await open(page, advanced.memberships);
-  await page.locator('.alc summary').click();
-  await expect.poll(() => page.evaluate(() => window.metricDots.some(radius => radius > 0))).toBe(true);
-  await page.locator('.alc canvas[data-chart="metric"]').focus();
-  await expect(page.locator('.alc [role="status"]')).toContainText('Revenue: —');
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.alc [role="status"]')).toContainText('Revenue: 12.5');
-  expect(errors).toEqual([]);
 });
 
 test('large explicit distributions keep labels readable and all categories keyboard-accessible', async ({page}) => {
@@ -414,12 +290,11 @@ test('large explicit distributions keep labels readable and all categories keybo
     payload.volume = [];
     payload.rates = [];
     payload.facets = [];
-    payload.metrics = [];
-    payload.tops = [{field: 'category', label: 'Categories', data: Array.from({length: 100}, (_, index) =>
+    payload.facets = [{field: 'category', label: 'Categories', data: Array.from({length: 100}, (_, index) =>
       ({x: `Category ${index + 1}`, y: 100 - index, url: null}))}];
     await route.fulfill({json: payload});
   });
-  await open(page, advanced.memberships);
+  await open(page, advanced.memberships + '?_facets=True');
   expect(await page.evaluate(() => window.categoryTicks.size)).toBeLessThan(25);
   await page.locator('.alc canvas').focus();
   await page.keyboard.press('End');
@@ -446,7 +321,7 @@ test('many explicit rates, modern palette colors and blocked chart storage remai
       data: payload.volume.map((point, month) => ({...point, y: (index + month) % 2}))}));
     await route.fulfill({json: payload});
   });
-  await open(page, advanced.memberships);
+  await open(page, advanced.memberships + '?_facets=True');
   const root = page.locator('.alc');
   await root.evaluate(element => element.style.width = '320px');
   await compact(page);
@@ -456,7 +331,7 @@ test('many explicit rates, modern palette colors and blocked chart storage remai
   await expect(last).toBeInViewport();
   await page.keyboard.press('Enter');
   await expect(last).toHaveAttribute('aria-pressed', 'false');
-  await page.getByRole('link', {name: 'Show counts', exact: true}).click();
+  await page.getByRole('link', {name: 'Hide counts', exact: true}).click();
   await expect(root).toHaveAttribute('data-ready', 'true');
   expect(errors).toEqual([]);
 });
@@ -479,12 +354,10 @@ for (const theme of ['light', 'dark']) {
             index < 60 ? 1 : Math.max(.15, .99 - (index - 60) / 75 + Math.sin(index) / 12)}));
       });
       payload.facets = [];
-      payload.tops = [];
-      payload.metrics = [];
-      payload.missing_dates = 0;
+        payload.missing_dates = 0;
       await route.fulfill({json: payload});
     });
-    await open(page, advanced.memberships, theme);
+    await open(page, advanced.memberships + '?_facets=True', theme);
     await compact(page);
     await expect(page.locator('.alc canvas:visible')).toHaveCount(1);
     // Long runs at 0% and 100% must paint actual series pixels inside the plot.
@@ -535,8 +408,7 @@ test('charts render when a host theme clears chart color variables', async ({pag
     await route.fulfill({response, body: await response.text() +
       '\n.alc { --alc-accent: ; --alc-green: ; --alc-purple: ; }'});
   });
-  await open(page, advanced.commerce);
+  await open(page, advanced.commerce + '?_facets=True');
   await compact(page);
-  await page.locator('.alc summary').click();
   await expect(page.locator('.alc canvas:visible')).toHaveCount(await page.locator('.alc canvas').count());
 });

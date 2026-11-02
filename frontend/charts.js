@@ -10,7 +10,7 @@ if (root) start(root);
 
 async function start(root) {
   root.hidden = false;
-  let payload, primary, sidebar, secondary, more, announcement;
+  let payload, primary, sidebar, overflow, announcement;
   let cards = [];
   let layoutKey;
   const locale = root.dataset.locale || document.documentElement.lang || 'en';
@@ -42,7 +42,7 @@ async function start(root) {
     }
   };
   const valueLabel = (value, rate = false) => value == null ? '—' : (rate ? percentages : numbers).format(value);
-  const disclosureKey = `admin-list-charts:more:${location.pathname}`;
+  const legendKey = `admin-list-charts:legend:${location.pathname}`;
 
   function activate(card, index) {
     const chart = card.instance;
@@ -63,32 +63,28 @@ async function start(root) {
 
   function buildCards() {
     cards.forEach(card => card.instance?.destroy());
-    root.querySelectorAll('.alc-status, .alc-primary, .alc-panels, .alc-footer, .alc-sr').forEach(element => element.remove());
+    root.querySelectorAll('.alc-status, .alc-primary, .alc-overflow, .alc-footer, .alc-sr').forEach(element => element.remove());
     cards = [];
     layoutKey = null;
     primary = text('div', '', root, 'alc-primary');
     root.classList.toggle('alc-has-timeline', Boolean(payload.volume.length));
     sidebar = text('div', '', primary, 'alc-sidebar');
+    overflow = text('div', '', root, 'alc-overflow');
     const footer = text('div', '', root, 'alc-footer');
     if (payload.missing_dates) {
       const note = text('p', payload.missing_dates_label, footer, 'alc-note');
       note.title = payload.missing_dates_label;
     }
-    more = text('details', '', footer, 'alc-more');
     let restored;
     try {
-      restored = JSON.parse(sessionStorage.getItem(disclosureKey));
-      more.open = restored === true || restored?.open === true;
-      sessionStorage.removeItem(disclosureKey);
+      restored = JSON.parse(sessionStorage.getItem(legendKey));
+      sessionStorage.removeItem(legendKey);
     } catch { /* Chart rendering also works when storage is unavailable. */ }
-    text('summary', root.dataset.moreLabel, more);
-    secondary = text('div', '', more, 'alc-panels');
-    more.addEventListener('toggle', () => render());
     announcement = text('p', '', root, 'alc-sr');
     announcement.setAttribute('role', 'status');
     announcement.setAttribute('aria-live', 'polite');
     function card(label, type, data, group) {
-      const element = text('article', '', secondary, `alc-card${type === 'timeline' ? ' alc-timeline' : ''}`);
+      const element = text('article', '', overflow, `alc-card${type === 'timeline' ? ' alc-timeline' : ''}`);
       const title = data.truncated ? `${label} (${root.dataset.topLabel})` : label;
       const header = text('div', '', element, 'alc-head');
       text('h2', title, header).title = title;
@@ -99,7 +95,7 @@ async function start(root) {
       canvas.setAttribute('role', 'img');
       canvas.setAttribute('aria-label', title);
       canvas.setAttribute('aria-description', root.dataset.keyboardLabel);
-      const hidden = type === 'timeline' && Array.isArray(restored?.hidden) ? restored.hidden : [];
+      const hidden = type === 'timeline' && Array.isArray(restored) ? restored : [];
       const item = {element, canvas, label, type, data, group, pointIndex: 0, instance: null, hiddenSeries: new Set(hidden), buttons: []};
       if (type === 'timeline' && payload.rates.length) {
         const legend = text('div', '', header, 'alc-legend');
@@ -146,8 +142,6 @@ async function start(root) {
     }
     if (payload.volume.length) card(payload.date_label, 'timeline', {data: payload.volume}, 'timeline');
     payload.facets.forEach(chart => card(chart.label, 'distribution', chart, 'facet'));
-    payload.tops.forEach(chart => card(chart.label, 'distribution', chart, 'top'));
-    payload.metrics.forEach(chart => card(chart.label, 'metric', chart, 'metric'));
     if (!cards.length) text('p', root.dataset.emptyLabel, primary, 'alc-status');
   }
 
@@ -173,12 +167,10 @@ async function start(root) {
     cards.forEach(card => {
       const {canvas, type, data} = card;
       const mini = card.element.parentElement === sidebar;
-      const visible = card.element.parentElement !== secondary || more.open;
-      if (card.instance && (refresh || !visible || card.mini !== mini)) {
+      if (card.instance && (refresh || card.mini !== mini)) {
         card.instance.destroy();
         card.instance = null;
       }
-      if (!visible) return;
       if (card.instance) {
         card.instance.resize();
         return;
@@ -200,13 +192,12 @@ async function start(root) {
         }
         return gradient;
       };
-      const labels = points.map((point, index) =>
-        (type === 'metric' && payload.volume[index]?.label) || point.label || point.x);
+      const labels = points.map(point => point.label || point.x);
       const datasets = [{label: type === 'timeline' ? root.dataset.countLabel : card.label,
-        data: points.map(point => point.y), backgroundColor: type === 'metric' ? palette.accent : barFill, borderColor: palette.accent,
+        data: points.map(point => point.y), backgroundColor: barFill, borderColor: palette.accent,
         order: type === 'timeline' ? 1 : 0,
         borderRadius: 4, maxBarThickness: type === 'timeline' ? 32 : 18,
-        borderWidth: type === 'metric' ? 1.25 : 0, pointRadius: type === 'metric' ? isolatedPoint : 0,
+        borderWidth: 0, pointRadius: 0,
         pointHoverRadius: 3, spanGaps: false}];
       if (type === 'timeline') {
         payload.rates.forEach((rate, index) => datasets.push({type: 'line', label: rate.label,
@@ -230,7 +221,7 @@ async function start(root) {
             maxTicksLimit: horizontal ? (mini ? 2 : 3) : 6,
             callback: horizontal ? value => compactNumbers.format(value) : shortLabel}},
         y: {beginAtZero: true, grid: {display: !horizontal, color: alpha(palette.grid, .6)}, border: {display: false},
-          ticks: {color: palette.quiet, font: {size: mini ? 10 : 11}, precision: type === 'metric' ? undefined : 0,
+          ticks: {color: palette.quiet, font: {size: mini ? 10 : 11}, precision: 0,
             ...(horizontal ? {callback: shortLabel, autoSkip: !mini} : {maxTicksLimit: 5, callback: value => compactNumbers.format(value)})}},
       };
       if (type === 'timeline' && payload.rates.length) scales.rate = {
@@ -240,7 +231,7 @@ async function start(root) {
         ticks: {color: palette.quiet, font: {size: 11}, callback: value => percentages.format(value)},
       };
       card.instance = new Chart(canvas, {
-        type: type === 'metric' ? 'line' : 'bar', data: {labels, datasets},
+        type: 'bar', data: {labels, datasets},
         plugins: horizontal ? (mini ? [{id: 'alc-values', afterDatasetsDraw(chart) {
           const {ctx} = chart;
           ctx.save();
@@ -313,16 +304,15 @@ async function start(root) {
     layoutKey = key;
     const leading = new Set(timeline ? [timeline] : candidates.slice(0, count));
     const side = new Set(sideCards);
-    let primaryIndex = 0, sidebarIndex = 0, secondaryIndex = 0;
+    let primaryIndex = 0, sidebarIndex = 0, overflowIndex = 0;
     cards.forEach(card => {
-      const target = leading.has(card) ? primary : side.has(card) ? sidebar : secondary;
-      const index = target === primary ? primaryIndex++ : target === sidebar ? sidebarIndex++ : secondaryIndex++;
+      const target = leading.has(card) ? primary : side.has(card) ? sidebar : overflow;
+      const index = target === primary ? primaryIndex++ : target === sidebar ? sidebarIndex++ : overflowIndex++;
       if (target.children[index] !== card.element) target.insertBefore(card.element, target.children[index] || null);
     });
     sidebar.hidden = !sideCards.length;
     primary.classList.toggle('alc-with-sidebar', Boolean(sideCards.length));
     primary.hidden = !cards.length && !primary.querySelector('.alc-status');
-    if (more) more.hidden = !secondary.childElementCount;
     render();
   }
 
@@ -333,9 +323,6 @@ async function start(root) {
         if (!response.ok) throw new Error('Chart request failed');
         payload = await response.json();
       } else payload = JSON.parse(document.getElementById('admin-list-charts-data').textContent);
-      payload.metrics.forEach(metric => metric.data.forEach(point => {
-        if (point.y !== null) point.y = Number(point.y);
-      }));
       buildCards();
       layout();
     } catch (error) {
@@ -353,10 +340,10 @@ async function start(root) {
   // Keep chart choices through Django's filter-count navigation only.
   document.querySelectorAll('#changelist-filter-extra-actions a.viewlink, #changelist-filter-extra-actions a.hidelink').forEach(link => {
     link.addEventListener('click', event => {
-      if (!more || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const timeline = cards.find(card => card.type === 'timeline');
       try {
-        sessionStorage.setItem(disclosureKey, JSON.stringify({open: more.open, hidden: [...(timeline?.hiddenSeries || [])]}));
+        sessionStorage.setItem(legendKey, JSON.stringify([...(timeline?.hiddenSeries || [])]));
       } catch { /* Optional state preservation. */ }
     });
   });

@@ -3,9 +3,9 @@
 Useful charts for Django admin, from one mixin.
 
 <!-- gallery:start -->
-![Visits in light mode](docs/gallery/visits-light-desktop.png)
+![Visits, timeline only](docs/gallery/visits-light-desktop.png)
 
-![Visits in dark mode](docs/gallery/visits-dark-desktop.png)
+![Visits, counts enabled](docs/gallery/visits-counts-light-desktop.png)
 <!-- gallery:end -->
 
 ```python
@@ -14,7 +14,7 @@ class OrderAdmin(ListChartMixin, admin.ModelAdmin):
     pass
 ```
 
-Charts appear above the admin list controls and follow search and filters across all results. The timeline takes at least two-thirds of the width, with boolean rates and compact distributions stacked beside it. **More charts** reveals overflow charts and configured metrics. Django’s **Show counts** changes filter counts only. Light, dark and automatic themes work without configuration. Use arrow keys on a focused chart to explore points and Enter to filter.
+Charts appear above the admin list controls and follow search and filters across all results. The initial view shows only the timeline. Django’s **Show counts** enables boolean rate overlays and standard distributions. On wide containers the timeline takes at least two-thirds of the width, with compact distributions stacked beside it and overflow directly below. Narrow containers stack distributions below the timeline. The plot remains 216px high; enabled distributions can increase the total layout height. Light, dark and automatic themes work without configuration. Use arrow keys on a focused chart to explore points and Enter to filter.
 
 See the [gallery](docs/gallery.md) for desktop and mobile examples in light and dark mode.
 
@@ -24,7 +24,7 @@ See the [gallery](docs/gallery.md) for desktop and mobile examples in light and 
 python -m pip install .
 ```
 
-For a local checkout, use the command above. The published release can be installed with `python -m pip install django-admin-list-charts==0.5`.
+For a local checkout, use the command above. After release, 0.5.1 can be installed with `python -m pip install django-admin-list-charts==0.5.1`.
 
 Add `'admin_list_charts'` to `INSTALLED_APPS`, then mix it into an admin:
 
@@ -42,11 +42,11 @@ Use your project's usual static-file deployment, including `collectstatic`. Char
 
 ## What happens automatically
 
-The timeline uses an existing `date_hierarchy`, or prefers `created_at`, `created`, `date_created`, `date_joined`, `published_at`, `published`, then `timestamp`. Otherwise it uses a sole eligible date field. Modification fields and `auto_now` fields are excluded from inference. Ambiguous or absent dates leave distributions available. Inference never changes `date_hierarchy` or adds Django date navigation.
+The timeline uses an existing `date_hierarchy`, or prefers `created_at`, `created`, `date_created`, `date_joined`, `published_at`, `published`, then `timestamp`. Otherwise it uses a sole eligible date field. Modification fields and `auto_now` fields are excluded from inference. Ambiguous or absent dates leave distributions available when counts are enabled. Inference never changes `date_hierarchy` or adds Django date navigation.
 
-Up to two booleans become timeline rate overlays. Up to three choice/boolean fields become distributions, preferring the request's `get_list_filter(request)`, followed by model choices and booleans. Single-valued related paths such as `company__source` and `company__active` work. Free text, identifiers, unrestricted relations, and multi-valued paths require explicit configuration. Numeric business metrics are always explicit.
+With counts enabled, up to two booleans become timeline rate overlays. Up to three choice/boolean fields become distributions, preferring the request's `get_list_filter(request)`, followed by model choices and booleans. Single-valued related paths such as `company__source` and `company__active` work. Free text, identifiers, unrestricted relations, and multi-valued paths require explicit configuration. Numeric metrics and top-N extras are not supported.
 
-Charts appear immediately, independently of Django's “Show counts”. Selection is deterministic. Empty and constant automatic charts are suppressed using their collected results; no replacement-candidate queries run. Default distributions show at most six categories. Long histories coarsen to at most 240 timeline buckets, with missing counts filled with zero and unknown rates/metrics left as gaps. Nullable booleans are excluded from rate denominators.
+Initial chart rendering uses one timeline aggregation query, or zero for an empty selection or a model without an eligible date. Django’s effective counts policy (`ALLOW`, `ALWAYS`, or `NEVER`) controls the overlays and distributions. Selection is deterministic. Empty and constant automatic charts are suppressed using their collected results; no replacement-candidate queries run. Default distributions show at most six categories. Long histories coarsen to at most 240 timeline buckets, with missing counts filled with zero and unknown rates left as gaps. Nullable booleans are excluded from rate denominators.
 
 Chart labels omit a leading `chart ` prefix and start with a capital letter.
 
@@ -60,7 +60,7 @@ python example_project/manage.py createsuperuser
 python example_project/manage.py runserver
 ```
 
-Open `/admin/`. Visits, Orders, Accounts, and Jobs each use only the mixin. Separate advanced entries show filters, revenue/average metrics, annotated subscriptions with lazy loading, and related filters with duplicate-producing searches. All data is synthetic. Larger presets are `10000`, `100000`, and `1000000`; reset is explicit.
+Open `/admin/`. Visits, Orders, Accounts, and Jobs each use only the mixin. Separate advanced entries show filters, annotated subscriptions with lazy loading, and related filters with duplicate-producing searches. All data is synthetic. Larger presets are `10000`, `100000`, and `1000000`; reset is explicit.
 
 ## Compatibility
 
@@ -69,7 +69,7 @@ Open `/admin/`. Visits, Orders, Accounts, and Jobs each use only the mixin. Sepa
 | 3.12, 3.13, 3.14 | 5.2 LTS, 6.0, 6.1 |
 | 3.15 | 6.1.3 onward |
 
-SQLite and PostgreSQL are supported. Stock Django admin is the supported theme. [Compatibility details](docs/compatibility.md), [query budgets and performance](docs/performance.md), [optional configuration](docs/advanced.md), and [0.4 → 0.5 migration](docs/migration.md).
+SQLite and PostgreSQL are supported. Stock Django admin is the supported theme. [Compatibility details](docs/compatibility.md), [query budgets and performance](docs/performance.md), [optional configuration](docs/advanced.md), and [0.4/0.5 → 0.5.1 migration](docs/migration.md).
 
 ## Development
 

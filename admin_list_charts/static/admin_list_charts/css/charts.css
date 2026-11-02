@@ -2,7 +2,7 @@
 html[data-theme="dark"] .alc { --alc-accent: #79b8d5; --alc-green: #75d5a7; --alc-purple: #c3a4ee; }
 @media (prefers-color-scheme: dark) { html[data-theme="auto"] .alc { --alc-accent: #79b8d5; --alc-green: #75d5a7; --alc-purple: #c3a4ee; } }
 .alc [hidden] { display: none; }
-.alc-primary { display: flex; gap: 8px; min-width: 0; }
+.alc-primary { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .alc-has-timeline .alc-primary { display: block; }
 .alc-has-timeline .alc-primary.alc-with-sidebar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(320px, calc((100% - 36px) / 3))); gap: 12px; }
 .alc-card { flex: 1 1 160px; min-width: 0; }
@@ -14,9 +14,9 @@ html[data-theme="dark"] .alc { --alc-accent: #79b8d5; --alc-green: #75d5a7; --al
 .alc-sidebar .alc-card { display: flex; flex-direction: column; min-height: 0; }
 .alc-sidebar .alc-head { height: 16px; flex-shrink: 0; }
 .alc-sidebar .alc-canvas { height: auto; min-height: 0; flex: 1; }
-.alc-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px; clear: both; }
-.alc-panels:not(:empty) { margin-top: 8px; }
-.alc-panels .alc-canvas { height: 300px; }
+.alc-overflow { display: flex; flex-wrap: wrap; gap: 8px; }
+.alc-overflow:not(:empty) { margin-top: 8px; }
+.alc-overflow .alc-card { flex: 1 1 240px; }
 .alc-legend { overflow-x: auto; scrollbar-width: none; display: flex; justify-content: flex-end; gap: 4px; margin-inline-start: auto; min-width: 0; }
 .alc .alc-legend button { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 160px; margin: 0; padding: 3px 5px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--body-quiet-color); font: inherit; font-size: 11px; line-height: 14px; }
 .alc .alc-legend button:hover { border-color: var(--hairline-color); background: var(--darkened-bg); color: var(--body-fg); }
@@ -25,11 +25,8 @@ html[data-theme="dark"] .alc { --alc-accent: #79b8d5; --alc-green: #75d5a7; --al
 .alc-legend button:first-child .alc-swatch { height: 8px; }
 .alc-series-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alc-footer { display: flow-root; margin-top: 4px; }
-.alc-more { font-size: 12px; }
-.alc summary { cursor: pointer; color: var(--link-fg); line-height: 20px; width: fit-content; white-space: nowrap; }
-.alc summary:focus-visible, .alc canvas:focus-visible, .alc button:focus-visible { outline: 2px solid var(--alc-accent); outline-offset: 2px; }
+.alc canvas:focus-visible, .alc button:focus-visible { outline: 2px solid var(--alc-accent); outline-offset: 2px; }
 .alc-note, .alc-status { color: var(--body-quiet-color); font-size: 12px; line-height: 20px; margin: 0; }
 .alc-note { float: inline-end; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alc button { cursor: pointer; margin-inline-start: 8px; }
 .alc-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media print { .alc-more:not([open]) { display: none; } }

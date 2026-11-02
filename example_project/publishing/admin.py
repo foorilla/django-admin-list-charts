@@ -15,4 +15,3 @@ class JobExplorerAdmin(ListChartMixin, admin.ModelAdmin):
     list_display = ('title', 'company', 'published_at', 'status', 'remote')
     list_filter = ('company__source', 'company__active', 'status', 'remote')
     search_fields = ('title', 'tags__name')
-    chart_top_fields = (('company', 6),)

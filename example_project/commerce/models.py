@@ -17,4 +17,4 @@ class Order(models.Model):
 class OrderMetrics(Order):
     class Meta:
         proxy = True
-        verbose_name_plural = 'Orders — revenue metrics'
+        verbose_name_plural = 'Orders — filters'

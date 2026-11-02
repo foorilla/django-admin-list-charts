@@ -5,11 +5,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 NAMES = [f'{example}-{theme}-{size}.png'
-         for example in ('visits', 'commerce', 'memberships', 'publishing')
+         for example in ('visits', 'commerce', 'memberships', 'publishing',
+                         'visits-counts', 'commerce-counts', 'memberships-counts', 'publishing-counts')
          for theme in ('light', 'dark') for size in ('desktop', 'mobile')]
-NAMES += [f'commerce-{mode}-{theme}-{size}.png'
-          for mode in ('more', 'counts') for theme in ('light', 'dark')
-          for size in ('desktop', 'mobile')]
 NAMES += [f'dense-history-{theme}-desktop.png' for theme in ('light', 'dark')]
 NAMES += [f'dense-inspection-{theme}-desktop.png' for theme in ('light', 'dark')]
 
@@ -35,7 +33,7 @@ def main():
     gallery.mkdir(exist_ok=True)
     for name in NAMES:
         shutil.copyfile(args.source / name, gallery / name)
-    lines = ['# Gallery', '', 'Compact charts adapt to desktop and mobile containers in Django’s light and dark themes.', '']
+    lines = ['# Gallery', '', 'Timeline-only and counts-enabled charts adapt to desktop and mobile containers in Django’s light and dark themes.', '']
     for example in ('visits', 'commerce', 'memberships', 'publishing'):
         captions = {
             'visits': 'Traffic over time with channel, device and conversion distributions.',
@@ -46,16 +44,10 @@ def main():
         lines.extend([f'## {example.title()}', '', captions[example], ''])
         for theme in ('light', 'dark'):
             for size in ('desktop', 'mobile'):
-                name = f'{example}-{theme}-{size}.png'
-                lines.extend([f'![{example.title()}, {theme}, {size}](gallery/{name})', ''])
-    for mode, title, caption in (
-        ('more', 'More charts', 'Open secondary charts and configured metrics when needed.'),
-        ('counts', 'Filter counts', 'Django’s Show counts leaves the chart layout unchanged.'),
-    ):
-        lines.extend([f'## {title}', '', caption, ''])
-        for theme in ('light', 'dark'):
-            for size in ('desktop', 'mobile'):
-                lines.extend([f'![{title}, {theme}, {size}](gallery/commerce-{mode}-{theme}-{size}.png)', ''])
+                for mode in ('', '-counts'):
+                    name = f'{example}{mode}-{theme}-{size}.png'
+                    caption = 'counts enabled' if mode else 'timeline only'
+                    lines.extend([f'![{example.title()}, {caption}, {theme}, {size}](gallery/{name})', ''])
     lines.extend(['## Long histories', '', 'Thin lines retain detail across dense timelines.', ''])
     for theme in ('light', 'dark'):
         lines.extend([f'![Long history, {theme}](gallery/dense-history-{theme}-desktop.png)', ''])
@@ -68,8 +60,8 @@ def main():
         document = path.read_text()
         start, end = '<!-- gallery:start -->', '<!-- gallery:end -->'
         images = '\n\n'.join(
-            f'![Visits in {theme} mode]({prefix}visits-{theme}-desktop.png)'
-            for theme in ('light', 'dark'))
+            f'![Visits, {caption}]({prefix}visits{mode}-light-desktop.png)'
+            for mode, caption in (('', 'timeline only'), ('-counts', 'counts enabled')))
         before, tail = document.split(start, 1)
         _, after = tail.split(end, 1)
         path.write_text(before + start + '\n' + images + '\n' + end + after)

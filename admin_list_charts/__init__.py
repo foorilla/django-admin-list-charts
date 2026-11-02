@@ -4,7 +4,7 @@ django-admin-list-charts
 Automatic charts for Django admin changelists, with bundled Chart.js assets.
 """
 
-__version__ = "0.5"
+__version__ = "0.5.1"
 __author__ = "foorilla LLC"
 __credits__ = "Pat Foo"
 __contact__ = "pat@foorilla.com"
