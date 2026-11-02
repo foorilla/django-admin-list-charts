@@ -45,7 +45,7 @@ Each metric gets its own scale and chart. All timeline metrics share the volume/
 
 - `get_chart_date_field(request)` returns a date field path or `None`.
 - `get_chart_queryset(request, changelist)` defaults to the complete filtered `changelist.queryset`. Keep the same model and preserve your permission restrictions. A narrowed source computes its own timeline total in the grouped query.
-- `get_chart_field(request, queryset, name)` resolves scalar model paths and annotation output fields. Override for synthetic metadata. System checks call this hook with `request=None`; allow that case.
+- `get_chart_field(request, queryset, name)` resolves scalar model paths and annotation output fields. Override for synthetic metadata. System checks may call this hook for model paths with `request=None`; annotation names are resolved against the request's queryset.
 - `get_chart_metrics(request)` returns the metric mapping.
 - `get_chart_facet_fields`, `get_chart_rate_fields`, `get_chart_top_fields`, and the automatic-limit getters allow request-dependent configuration.
 - `get_chart_palette(request)` returns optional `accent` and `series` colors.
@@ -74,4 +74,4 @@ Use CSS-compatible concrete color strings. Default colors follow stock admin the
 
 ## Checks
 
-`manage.py check` reports invalid metric types (`E001`), nonnegative integer configuration errors (`E002`), multi-valued metric paths (`E003`), and unresolved explicit fields (`W001`). A warning may describe a request-dependent annotation; provide metadata through `get_chart_field` for startup validation.
+`manage.py check` reports invalid metric types (`E001`), nonnegative integer configuration errors (`E002`), multi-valued metric paths (`E003`), and invalid model paths (`W001`). Request-dependent annotation names are resolved when charts load and need no startup metadata override.

@@ -105,7 +105,7 @@ class ListChartMixinTests(TestCase):
 
     def test_chart_labels_strip_prefix_and_capitalize_without_changing_acronyms(self):
         obj = MagicAdmin(Event, admin.site)
-        names = ('chart_has_pro', 'chart_has_pro_plus')
+        names = ('_chart_has_pro', '_chart_has_pro_plus')
         obj.chart_rate_fields = obj.chart_facet_fields = names
         obj.chart_metrics = {'chart_total': Count('pk')}
         queryset = Event.objects.annotate(**{
@@ -277,6 +277,30 @@ class ListChartMixinTests(TestCase):
         obj.chart_auto_max_rate_fields = -1
         self.assertEqual({check.id for check in obj.check()},
                          {'admin_list_charts.E001', 'admin_list_charts.E002'})
+
+    def test_system_checks_defer_request_annotations_without_running_queryset(self):
+        obj = MagicAdmin(Event, admin.site)
+        names = ('_chart_has_pro_plus', '_chart_has_pro')
+        obj.chart_facet_fields = obj.chart_rate_fields = names
+        obj.chart_top_fields = ((names[0], 6),)
+        with self.assertNumQueries(0), patch.object(obj, 'get_queryset', side_effect=AssertionError('No request at startup')):
+            self.assertEqual(obj.check(), [])
+        queryset = Event.objects.annotate(**{
+            name: models.ExpressionWrapper(models.F('enabled'), output_field=models.BooleanField())
+            for name in names
+        })
+        payload = obj.get_chart_payload(self.request, queryset, total_rows=5)
+        self.assertEqual([chart['label'] for chart in payload['rates']], ['Has pro plus', 'Has pro'])
+        self.assertEqual(payload['facets'][0]['label'], 'Has pro')
+        self.assertEqual(payload['tops'][0]['label'], 'Has pro plus')
+
+    def test_system_checks_still_warn_for_invalid_model_paths_once_per_field(self):
+        obj = MagicAdmin(Event, admin.site)
+        obj.chart_facet_fields = ('tags__name', 'company__missing')
+        obj.chart_rate_fields = ('tags__name',)
+        with self.assertNumQueries(0):
+            warnings = obj.check()
+        self.assertEqual([warning.id for warning in warnings], ['admin_list_charts.W001'] * 2)
 
 
     def test_inline_render_uses_json_script_without_facets_switch(self):

@@ -234,9 +234,13 @@ class ListChartMixin:
     def check(self, **kwargs):
         errors = super().check(**kwargs)
         queryset = self.model._default_manager.all()
-        for name in (*self.chart_facet_fields, *self.chart_rate_fields,
-                     *(item[0] for item in self.chart_top_fields)):
-            # Annotations are request-dependent and are validated when their query is built.
+        for name in dict.fromkeys((*self.chart_facet_fields, *self.chart_rate_fields,
+                                   *(item[0] for item in self.chart_top_fields))):
+            # Unknown roots can be annotations supplied by a request-dependent queryset.
+            try:
+                self.model._meta.get_field(name.split('__', 1)[0])
+            except FieldDoesNotExist:
+                continue
             if self.get_chart_field(None, queryset, name) is None:
                 errors.append(checks.Warning(
                     _('Chart field “%(name)s” is not a single-valued model field; '
