@@ -2,11 +2,16 @@ from django.contrib import admin
 
 from admin_list_charts.admin import ListChartMixin
 
-from .models import Visit
+from .models import Visit, VisitExplorer
 
 
 @admin.register(Visit)
 class VisitAdmin(ListChartMixin, admin.ModelAdmin):
+    pass
+
+
+@admin.register(VisitExplorer)
+class VisitExplorerAdmin(ListChartMixin, admin.ModelAdmin):
     date_hierarchy = 'created_at'
     list_display = (
         'path',

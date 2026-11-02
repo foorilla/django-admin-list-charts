@@ -1,0 +1,17 @@
+{
+  "name": "django-admin-list-charts-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild frontend/charts.js --bundle --minify --format=iife --target=es2020 --legal-comments=eof --outfile=admin_list_charts/static/admin_list_charts/js/chart.bundle.min.js",
+    "test:browser": "playwright test",
+    "test:browser:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.11.1",
+    "@fontsource/inter": "5.3.0",
+    "@playwright/test": "1.58.2",
+    "chart.js": "4.6.1",
+    "esbuild": "0.28.2"
+  }
+}

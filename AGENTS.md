@@ -11,15 +11,15 @@ Agent guidance for working in this repository.
 - Core feature: `ListChartMixin` in `admin_list_charts/admin.py`
 - Template override: `admin_list_charts/templates/admin_list_charts/change_list_with_chart.html`
 - Bundled assets: `admin_list_charts/static/admin_list_charts/`
-- Test suite: not present in this repository today
+- Test suite: Django-native tests in `tests/` and Playwright scenarios in `tests/browser/`
 - Lint config: not present in this repository today
-- CI config: not present in this repository today
+- CI config: `.github/workflows/checks.yml`
 
 ## Source Of Truth
 
 - Prefer existing implementation patterns over generic best practices.
 - Keep this repo as a small reusable Django app package.
-- Preserve compatibility implied by `setup.py` (`python_requires='>=3.12,<3.15'`, `Django>=5,<7`).
+- Preserve compatibility implied by `setup.py` (`python_requires='>=3.12,<3.16'`, Django 5.2/6.0/6.1; Python 3.15 requires Django 6.1.3+).
 - Avoid introducing syntax that requires newer Python unless requested.
 - Keep package metadata in sync with `admin_list_charts/__init__.py` and `setup.py`.
 
@@ -40,26 +40,12 @@ Agent guidance for working in this repository.
 
 ## Test Commands
 
-There is currently no committed test suite.
-Use the commands below when adding or running tests.
+Run the Django-native harness with its settings module:
 
-- Run all unittest tests: `python -m unittest discover -s tests -p "test_*.py"`
-- Run one unittest module: `python -m unittest tests.test_admin`
-- Run one unittest class: `python -m unittest tests.test_admin.ListChartMixinTests`
-- Run one unittest test: `python -m unittest tests.test_admin.ListChartMixinTests.test_get_chart_period`
-
-If pytest is introduced later:
-
-- Run all pytest tests: `pytest`
-- Run file: `pytest tests/test_admin.py`
-- Run one test: `pytest tests/test_admin.py::TestListChartMixin::test_get_chart_period`
-
-Django project-level testing (when using a host project):
-
-- Run all app tests: `python manage.py test`
-- Run app label tests: `python manage.py test admin_list_charts`
-- Run one test case: `python manage.py test tests.test_admin.ListChartMixinTests`
-- Run one test method: `python manage.py test tests.test_admin.ListChartMixinTests.test_get_chart_period`
+- All tests: `DJANGO_SETTINGS_MODULE=tests.settings python -m django test tests`
+- One class: `DJANGO_SETTINGS_MODULE=tests.settings python -m django test tests.test_admin.ListChartMixinTests`
+- PostgreSQL: `TEST_POSTGRES=1 PGDATABASE=dalc_tests DJANGO_SETTINGS_MODULE=tests.settings python -m django test tests`
+- Browser scenarios: `npm ci && npx playwright install chromium && npm run test:browser`
 
 Reference project-level checks in this repo:
 
@@ -164,6 +150,8 @@ If these files are added later, treat them as high-priority instructions and upd
 - App config: `admin_list_charts/apps.py`
 - Package metadata: `admin_list_charts/__init__.py`
 - Admin template: `admin_list_charts/templates/admin_list_charts/change_list_with_chart.html`
-- Static JS: `admin_list_charts/static/admin_list_charts/js/chart.bundle.min.js`
+- Static JS: `admin_list_charts/static/admin_list_charts/js/chart.bundle.min.js` (build source: `frontend/charts.js`; use `npm ci && npm run build`)
+- Aggregation: `admin_list_charts/charts.py`
+- Styles: `admin_list_charts/static/admin_list_charts/css/charts.css`
 - Packaging: `setup.py`, `MANIFEST.in`
 - Local reference project: `example_project/`

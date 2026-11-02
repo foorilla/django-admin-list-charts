@@ -1,2 +1,11 @@
-recursive-include admin_list_charts/static/ *.js
+recursive-include admin_list_charts/static/ *.js *.css *.txt
 recursive-include admin_list_charts/templates/ *.html
+include LICENSE
+include package.json package-lock.json
+recursive-include frontend *.js
+include playwright.config.js .nvmrc
+recursive-include tests *.py *.js
+recursive-include scripts *.py
+recursive-include example_project *.py
+recursive-include docs *.md *.yml *.png
+recursive-exclude docs *.json

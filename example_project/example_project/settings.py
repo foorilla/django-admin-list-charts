@@ -16,6 +16,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'admin_list_charts',
     'demo',
+    'commerce',
+    'memberships',
+    'publishing',
 ]
 
 MIDDLEWARE = [

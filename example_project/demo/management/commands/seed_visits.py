@@ -1,5 +1,5 @@
 import random
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -11,6 +11,8 @@ class Command(BaseCommand):
     help = 'Seed demo Visit rows spread across the last N days.'
 
     def add_arguments(self, parser):
+        parser.add_argument('--seed', type=int, default=42)
+        parser.add_argument('--reference-date', default='2026-10-01')
         parser.add_argument('--days', type=int, default=180, help='How many days of data to generate.')
         parser.add_argument(
             '--min-per-day',
@@ -30,13 +32,13 @@ class Command(BaseCommand):
             help='Delete existing Visit rows before seeding.',
         )
 
-    @staticmethod
-    def _weighted_choice(options):
+    def _weighted_choice(self, options):
         values = [option[0] for option in options]
         weights = [option[1] for option in options]
-        return random.choices(values, weights=weights, k=1)[0]
+        return self.rng.choices(values, weights=weights, k=1)[0]
 
     def handle(self, *args, **options):
+        self.rng = random.Random(options['seed'])
         days = max(1, options['days'])
         min_per_day = max(1, options['min_per_day'])
         max_per_day = max(1, options['max_per_day'])
@@ -46,7 +48,7 @@ class Command(BaseCommand):
         if options['truncate']:
             Visit.objects.all().delete()
 
-        base_time = timezone.now()
+        base_time = timezone.make_aware(datetime.fromisoformat(options['reference_date']))
 
         paths = [
             '/jobs/',
@@ -89,26 +91,26 @@ class Command(BaseCommand):
                 microsecond=0,
             )
 
-            baseline = random.randint(min_per_day, max_per_day)
+            baseline = self.rng.randint(min_per_day, max_per_day)
             weekday = day_start.weekday()
             if weekday in (5, 6):
-                baseline = max(min_per_day, int(baseline * random.uniform(0.6, 0.85)))
+                baseline = max(min_per_day, int(baseline * self.rng.uniform(0.6, 0.85)))
             elif weekday in (1, 2):
-                baseline = min(max_per_day, int(baseline * random.uniform(1.1, 1.35)))
+                baseline = min(max_per_day, int(baseline * self.rng.uniform(1.1, 1.35)))
 
-            if random.random() < 0.06:
-                baseline = int(baseline * random.uniform(1.8, 2.8))
+            if self.rng.random() < 0.06:
+                baseline = int(baseline * self.rng.uniform(1.8, 2.8))
 
             count = max(1, baseline)
             for _ in range(count):
-                hour = random.randint(0, 23)
-                minute = random.randint(0, 59)
+                hour = self.rng.randint(0, 23)
+                minute = self.rng.randint(0, 59)
                 source = self._weighted_choice(sources)
                 channel = self._weighted_choice(channels)
                 device_type = self._weighted_choice(devices)
 
-                is_authenticated = random.random() < 0.44
-                is_returning = random.random() < (0.62 if is_authenticated else 0.27)
+                is_authenticated = self.rng.random() < 0.44
+                is_returning = self.rng.random() < (0.62 if is_authenticated else 0.27)
                 conversion_bias = 0.015
                 if is_authenticated:
                     conversion_bias += 0.03
@@ -118,11 +120,11 @@ class Command(BaseCommand):
                     conversion_bias += 0.012
                 if source == 'newsletter':
                     conversion_bias += 0.02
-                is_conversion = random.random() < conversion_bias
+                is_conversion = self.rng.random() < conversion_bias
 
                 visits.append(
                     Visit(
-                        path=random.choice(paths),
+                        path=self.rng.choice(paths),
                         source=source,
                         channel=channel,
                         device_type=device_type,

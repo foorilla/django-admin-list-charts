@@ -1,11 +1,10 @@
 """
 django-admin-list-charts
 
-Super simple bar charts for django admin list views visualizing
-the number of objects based on date_hierarchy using Chart.js.
+Automatic charts for Django admin changelists, with bundled Chart.js assets.
 """
 
-__version__ = "0.4"
+__version__ = "0.5"
 __author__ = "foorilla LLC"
 __credits__ = "Pat Foo"
 __contact__ = "pat@foorilla.com"

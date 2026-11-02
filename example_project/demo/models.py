@@ -39,3 +39,9 @@ class Visit(models.Model):
 
     def __str__(self):
         return f'{self.path} ({self.created_at.isoformat()})'
+
+
+class VisitExplorer(Visit):
+    class Meta:
+        proxy = True
+        verbose_name_plural = 'Visits — with filters'

@@ -1,0 +1,166 @@
+name: Checks
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  sqlite:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13', '3.14']
+        django: ['5.2', '6.0', '6.1']
+        include:
+          - python: '3.15'
+            django: maintenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -U pip setuptools wheel
+      - if: matrix.django != 'maintenance'
+        run: python -m pip install 'Django~=${{ matrix.django }}.0' .
+      - if: matrix.django == 'maintenance'
+        run: python -m pip install 'https://github.com/django/django/archive/refs/heads/stable/6.1.x.zip' .
+      - run: python -m django test tests --verbosity 2
+        env:
+          DJANGO_SETTINGS_MODULE: tests.settings
+      - run: python example_project/manage.py makemigrations --check --dry-run
+      - run: python -m pip check
+
+  postgres:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - python: '3.12'
+            django: '5.2'
+          - python: '3.14'
+            django: '6.1'
+    services:
+      postgres:
+        image: postgres:18.0
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dalc_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install 'Django~=${{ matrix.django }}.0' 'psycopg[binary]' .
+      - run: python -m django test tests --verbosity 2
+        env:
+          DJANGO_SETTINGS_MODULE: tests.settings
+          TEST_POSTGRES: '1'
+          PGDATABASE: dalc_tests
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: npm ci && npm run build
+      - run: git diff --exit-code -- admin_list_charts/static/
+      - run: python -m pip install build twine && python -m build
+      - run: python -m twine check --strict dist/*
+      - run: python scripts/build_gallery.py --check
+      - run: python scripts/verify_package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+  browser:
+    # Compare with the reviewed darwin baselines; upload screenshot differences on failure.
+    runs-on: macos-15
+    strategy:
+      matrix:
+        django: ['5.2', '6.0', '6.1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: python -m pip install 'Django~=${{ matrix.django }}.0' .
+      - run: npm ci && npx playwright install chromium --only-shell
+      - if: matrix.django == '6.1'
+        run: npm run test:browser
+        env:
+          PYTHON: python
+      - if: matrix.django != '6.1'
+        run: npm run test:browser -- --ignore-snapshots
+        env:
+          PYTHON: python
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-django-${{ matrix.django }}
+          path: |
+            playwright-report/
+            test-results/
+
+  browser-engines:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: python -m pip install 'Django~=6.1.0' .
+      - run: npm ci && npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run test:browser
+        env:
+          PYTHON: python
+          PLAYWRIGHT_BROWSER: ${{ matrix.browser }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            test-results/
+
+  upcoming:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.15'
+      - run: python -m pip install 'https://github.com/django/django/archive/refs/heads/main.zip'
+      - run: python -m pip install --no-deps .
+      - run: python -m django test tests
+        env:
+          DJANGO_SETTINGS_MODULE: tests.settings
