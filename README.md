@@ -48,6 +48,8 @@ Up to two booleans become timeline rate overlays. Up to three choice/boolean fie
 
 Charts appear immediately, independently of Django's “Show counts”. Selection is deterministic. Empty and constant automatic charts are suppressed using their collected results; no replacement-candidate queries run. Default distributions show at most six categories. Long histories coarsen to at most 240 timeline buckets, with missing counts filled with zero and unknown rates/metrics left as gaps. Nullable booleans are excluded from rate denominators.
 
+Chart labels omit a leading `chart ` prefix and start with a capital letter.
+
 ## Examples
 
 ```bash

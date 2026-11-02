@@ -80,7 +80,9 @@ class ChartBuilder:
     def label(self, name):
         field = self.field(name)
         label = str(self.admin.chart_labels.get(name, getattr(field, 'verbose_name', None)
-                                               or name.replace('__', ' / ').replace('_', ' ')))
+                                               or name.replace('__', ' / ').replace('_', ' '))).strip()
+        if label.lower().startswith('chart '):
+            label = label[6:].lstrip()
         return label[:1].upper() + label[1:]
 
     def metric_valid(self, expression):

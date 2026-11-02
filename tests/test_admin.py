@@ -103,6 +103,26 @@ class ListChartMixinTests(TestCase):
         self.assertEqual(payload['rates'][0]['field'], 'company__active')
         self.assertIn('Agency', [point['x'] for point in payload['facets'][0]['data']])
 
+    def test_chart_labels_strip_prefix_and_capitalize_without_changing_acronyms(self):
+        obj = MagicAdmin(Event, admin.site)
+        names = ('chart_has_pro', 'chart_has_pro_plus')
+        obj.chart_rate_fields = obj.chart_facet_fields = names
+        obj.chart_metrics = {'chart_total': Count('pk')}
+        queryset = Event.objects.annotate(**{
+            name: models.ExpressionWrapper(models.F('enabled'), output_field=models.BooleanField())
+            for name in names
+        })
+        payload = obj.get_chart_payload(self.request, queryset, total_rows=5)
+        for group in ('rates', 'facets'):
+            self.assertEqual([chart['label'] for chart in payload[group]], ['Has pro', 'Has pro plus'])
+        self.assertEqual(payload['metrics'][0]['label'], 'Total')
+        obj.chart_labels = dict(zip(names, (' chart has pro ', 'CHART API usage')))
+        obj.chart_labels['chart_total'] = 'chartreuse revenue'
+        payload = obj.get_chart_payload(self.request, queryset, total_rows=5)
+        for group in ('rates', 'facets'):
+            self.assertEqual([chart['label'] for chart in payload[group]], ['Has pro', 'API usage'])
+        self.assertEqual(payload['metrics'][0]['label'], 'Chartreuse revenue')
+
     def test_ambiguous_and_updated_dates_are_not_inferred(self):
         for model in (Ambiguous, Undated):
             model.objects.bulk_create([model(state=True), model(state=False)])
