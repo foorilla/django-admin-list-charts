@@ -6,7 +6,7 @@ Automatic dates prefer `date_hierarchy`, then `created_at`, `created`, `date_cre
 
 Charts sit above the list controls. Initially only the timeline is queried and shown. Django’s “Show counts” enables rate overlays and distributions; `ShowFacets.ALWAYS` enables them on every request and `NEVER` disables them even when `_facets` is present. Inline rendering and lazy loading use the effective `ChangeList.add_facets` value.
 
-The timeline takes at least two-thirds of the width, with compact distributions stacked in a sidebar where space permits. Overflow distributions appear directly below; narrow containers stack all distributions below the timeline. Every enabled chart is visible. The timeline plot is 216px high. Click a series label to show or hide it. Legend choices survive counts navigation, resizing and theme changes.
+On wide containers every chart stays on one row. The timeline takes at least two-thirds of the width, with up to three compact distributions stacked in a sidebar. The third distribution is shown only when the first two have fewer than 10 categories combined; the row then grows by up to 76px (to at most 320px) to fit it. Distributions that do not fit beside the timeline are left out rather than wrapped onto a separate row. Narrow containers stack all distributions below the timeline. The timeline plot is 216px high unless the row grows. Click a series label to show or hide it. Legend choices survive counts navigation, resizing and theme changes.
 
 ## Settings on ModelAdmin
 

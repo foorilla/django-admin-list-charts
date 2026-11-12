@@ -14,7 +14,7 @@ class OrderAdmin(ListChartMixin, admin.ModelAdmin):
     pass
 ```
 
-Charts appear above the admin list controls and follow search and filters across all results. The initial view shows only the timeline. Django’s **Show counts** enables boolean rate overlays and standard distributions. On wide containers the timeline takes at least two-thirds of the width, with compact distributions stacked beside it and overflow directly below. Narrow containers stack distributions below the timeline. The plot remains 216px high; enabled distributions can increase the total layout height. Light, dark and automatic themes work without configuration. Use arrow keys on a focused chart to explore points and Enter to filter.
+Charts appear above the admin list controls and follow search and filters across all results. The initial view shows only the timeline. Django’s **Show counts** enables boolean rate overlays and standard distributions. On wide containers all charts share one row: the timeline takes at least two-thirds of the width, with up to three compact distributions stacked beside it. A third distribution is shown only when the first two have fewer than 10 categories combined, and the row grows slightly (at most 320px) to fit it; distributions that do not fit are left out. Narrow containers stack distributions below the timeline. The timeline plot is 216px high unless the row grows. Light, dark and automatic themes work without configuration. Use arrow keys on a focused chart to explore points and Enter to filter.
 
 See the [gallery](docs/gallery.md) for desktop and mobile examples in light and dark mode.
 
@@ -24,7 +24,7 @@ See the [gallery](docs/gallery.md) for desktop and mobile examples in light and 
 python -m pip install .
 ```
 
-For a local checkout, use the command above. After release, 0.5.1 can be installed with `python -m pip install django-admin-list-charts==0.5.1`.
+For a local checkout, use the command above. After release, 0.5.2 can be installed with `python -m pip install django-admin-list-charts==0.5.2`.
 
 Add `'admin_list_charts'` to `INSTALLED_APPS`, then mix it into an admin:
 

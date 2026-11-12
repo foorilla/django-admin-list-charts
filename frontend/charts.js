@@ -43,6 +43,8 @@ async function start(root) {
   };
   const valueLabel = (value, rate = false) => value == null ? '—' : (rate ? percentages : numbers).format(value);
   const legendKey = `admin-list-charts:legend:${location.pathname}`;
+  const SIDE_HEIGHT = 244, MAX_SIDE_HEIGHT = 320;
+  const sideNeed = card => 42 + card.data.data.length * 14;
 
   function activate(card, index) {
     const chart = card.instance;
@@ -165,6 +167,7 @@ async function start(root) {
     const palette = colors();
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     cards.forEach(card => {
+      if (!card.element.isConnected) return;
       const {canvas, type, data} = card;
       const mini = card.element.parentElement === sidebar;
       if (card.instance && (refresh || card.mini !== mini)) {
@@ -287,30 +290,45 @@ async function start(root) {
     let candidates = cards.filter(card => ['timeline', 'facet'].includes(card.group));
     if (!candidates.length) candidates = cards.slice(0, 1);
     const width = root.getBoundingClientRect().width;
+    const oneRow = Boolean(timeline) && width >= 696;
     const sideCards = [];
-    if (timeline && width >= 696) {
+    let sideHeight = SIDE_HEIGHT;
+    if (oneRow) {
       let used = 0;
       for (const card of candidates.filter(card => card !== timeline)) {
-        const height = 42 + card.data.data.length * 11 + (sideCards.length ? 8 : 0);
-        if (used + height > 244) break;
+        // A third distribution only joins when the first two are short; the row may grow a little for it.
+        if (sideCards.length === 3 || (sideCards.length === 2 &&
+          sideCards[0].data.data.length + sideCards[1].data.data.length >= 10)) break;
+        const height = sideNeed(card) + (sideCards.length ? 8 : 0);
+        if (used + height > (sideCards.length === 2 ? MAX_SIDE_HEIGHT : SIDE_HEIGHT)) break;
         used += height;
         sideCards.push(card);
       }
+      sideHeight = Math.max(SIDE_HEIGHT, used);
     }
+    // Wide timeline layouts stay on one row: distributions that do not fit beside the timeline are left out.
     const count = timeline ? 1 + sideCards.length :
       Math.min(candidates.length, Math.max(1, Math.floor((width + 8) / 168)));
-    const key = `${Boolean(timeline)}:${count}`;
+    const key = `${Boolean(timeline)}:${oneRow}:${count}:${sideHeight}`;
     if (key === layoutKey) return;
     layoutKey = key;
     const leading = new Set(timeline ? [timeline] : candidates.slice(0, count));
     const side = new Set(sideCards);
     let primaryIndex = 0, sidebarIndex = 0, overflowIndex = 0;
     cards.forEach(card => {
+      if (oneRow && !leading.has(card) && !side.has(card)) {
+        card.instance?.destroy();
+        card.instance = null;
+        card.element.remove();
+        return;
+      }
       const target = leading.has(card) ? primary : side.has(card) ? sidebar : overflow;
       const index = target === primary ? primaryIndex++ : target === sidebar ? sidebarIndex++ : overflowIndex++;
       if (target.children[index] !== card.element) target.insertBefore(card.element, target.children[index] || null);
     });
     sidebar.hidden = !sideCards.length;
+    sidebar.style.gridTemplateRows = sideCards.map(card => `minmax(0, ${sideNeed(card)}fr)`).join(' ');
+    primary.style.setProperty('--alc-row', `${sideHeight}px`);
     primary.classList.toggle('alc-with-sidebar', Boolean(sideCards.length));
     primary.hidden = !cards.length && !primary.querySelector('.alc-status');
     render();

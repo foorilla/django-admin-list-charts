@@ -51,7 +51,21 @@ async function compact(page) {
   const chart = await root.boundingBox();
   const changelist = await page.locator('#changelist').boundingBox();
   expect(chart.y + chart.height).toBeLessThanOrEqual(changelist.y);
-  for (const canvas of await root.locator('.alc-primary > .alc-card .alc-canvas').all()) await expect(canvas).toHaveCSS('height', '216px');
+  const sidebar = root.locator('.alc-sidebar:visible');
+  if (await sidebar.count()) {
+    // Wide layouts keep every chart on the timeline row, which may grow a little for a third distribution.
+    await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(0);
+    const cards = await sidebar.locator('.alc-card').count();
+    expect(cards).toBeLessThanOrEqual(3);
+    const sideHeight = await sidebar.evaluate(element => element.getBoundingClientRect().height);
+    expect(sideHeight).toBeGreaterThanOrEqual(244);
+    expect(sideHeight).toBeLessThanOrEqual(320);
+    const plot = await root.locator('.alc-timeline .alc-canvas').evaluate(element => element.getBoundingClientRect().height);
+    expect(plot).toBe(sideHeight - 28);
+    if (cards < 3) expect(plot).toBe(216);
+  } else {
+    for (const canvas of await root.locator('.alc-primary > .alc-card .alc-canvas').all()) await expect(canvas).toHaveCSS('height', '216px');
+  }
   const timeline = root.locator('.alc-timeline');
   if (await timeline.count()) {
     const width = await timeline.evaluate(element => element.getBoundingClientRect().width);
@@ -119,21 +133,60 @@ for (const [name, url] of Object.entries(advanced)) {
   });
 }
 
-test('all enabled charts remain visible across container resizing and themes', async ({page}) => {
+test('distributions stay beside the timeline on wide containers and stack on narrow ones', async ({page}) => {
   await page.setViewportSize({width: 2200, height: 960});
   await open(page, examples.visits + '?_facets=True');
   const root = page.locator('.alc');
-  const count = await root.locator('.alc-card').count();
-  expect(count).toBeGreaterThan(3);
-  await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(2);
-  await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(count - 3);
+  const payload = JSON.parse(await page.locator('#admin-list-charts-data').textContent());
+  expect(payload.facets.length).toBeGreaterThan(2);
+  const need = facet => 42 + facet.data.length * 14;
+  const side = payload.facets[0].data.length + payload.facets[1].data.length >= 10 ||
+    need(payload.facets[0]) + need(payload.facets[1]) + need(payload.facets[2]) + 16 > 320 ? 2 : 3;
+  await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(side);
+  await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(0);
   for (const width of [695, 696, 320, 1200, 320]) {
     await root.evaluate((element, width) => element.style.width = `${width}px`, width);
-    await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(width >= 696 ? 2 : 0);
+    await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(width >= 696 ? side : 0);
+    await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(width >= 696 ? 0 : payload.facets.length);
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await compact(page);
   }
 });
+
+for (const [sizes, shown] of [[[4, 3, 3], 3], [[4, 4, 6], 2], [[6, 4, 2], 2], [[5, 5, 2], 2],
+  [[3, 3, 2, 2], 3], [[8, 8], 1], [[15, 2], 0], [[20, 2], 0]]) {
+  test(`distributions ${sizes.join('/')} keep ${shown} beside the timeline`, async ({page}) => {
+    await page.setViewportSize({width: 1600, height: 960});
+    await page.route('**/accountsubscriptions/chart-data/**', async route => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.facets = sizes.map((size, chart) => ({field: `field${chart}`, label: `Field ${chart + 1}`,
+        data: Array.from({length: size}, (_, index) => ({x: `Value ${index + 1}`, y: size - index, url: null}))}));
+      await route.fulfill({json: payload});
+    });
+    await open(page, advanced.memberships + '?_facets=True');
+    const root = page.locator('.alc');
+    await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(shown);
+    await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(0);
+    const used = sizes.slice(0, shown).reduce((sum, size) => sum + 42 + size * 14, 0) + (shown - 1) * 8;
+    if (shown) {
+      const sidebar = await root.locator('.alc-sidebar').evaluate(element => element.getBoundingClientRect().height);
+      expect(sidebar).toBe(Math.max(244, used));
+    }
+    await compact(page);
+    await root.evaluate(element => element.style.width = '600px');
+    await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(sizes.length);
+    await compact(page);
+    const last = root.locator('.alc-overflow canvas').last();
+    await last.focus();
+    await expect(root.locator('[role="status"]')).toContainText(`Field ${sizes.length}`);
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await root.evaluate(element => element.style.width = '900px');
+    await expect(root.locator('.alc-sidebar .alc-card')).toHaveCount(shown);
+    await expect(root.locator('.alc-overflow .alc-card')).toHaveCount(0);
+    await compact(page);
+  });
+}
 
 test('series controls work with the keyboard and preserve choices through resizing and themes', async ({page}) => {
   await open(page, advanced.visits + '?_facets=True');

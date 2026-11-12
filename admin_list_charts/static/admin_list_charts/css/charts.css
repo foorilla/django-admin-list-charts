@@ -10,7 +10,8 @@ html[data-theme="dark"] .alc { --alc-accent: #79b8d5; --alc-green: #75d5a7; --al
 .alc .alc-card h2 { background: none; font-size: 12px; line-height: 16px; color: var(--body-fg); font-weight: 600; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alc-timeline h2 { flex-shrink: 0; max-width: 35%; }
 .alc-canvas { position: relative; height: 216px; min-width: 0; }
-.alc-sidebar { display: grid; grid-auto-rows: minmax(0, 1fr); gap: 8px; height: 244px; min-width: 0; }
+.alc-with-sidebar .alc-timeline .alc-canvas { height: calc(var(--alc-row, 244px) - 28px); }
+.alc-sidebar { display: grid; grid-auto-rows: minmax(0, 1fr); gap: 8px; height: var(--alc-row, 244px); min-width: 0; }
 .alc-sidebar .alc-card { display: flex; flex-direction: column; min-height: 0; }
 .alc-sidebar .alc-head { height: 16px; flex-shrink: 0; }
 .alc-sidebar .alc-canvas { height: auto; min-height: 0; flex: 1; }

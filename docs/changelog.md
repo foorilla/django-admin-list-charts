@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- Keep wide timeline layouts on one row: no full-width overflow row for distributions. Up to three distributions sit beside the timeline; the third appears only when the first two have fewer than 10 categories combined, and the row grows up to 320px to fit it. Sidebar rows are sized by category count.
+- Restore all distributions when resizing to narrow containers, including when none fit the wide sidebar, and preserve keyboard controls and theme changes.
+
 ## 0.5.1
 
 - Restore timeline-only initial loads and `facets_on=False`; Django’s effective counts mode enables rates/distributions for inline and lazy rendering.
